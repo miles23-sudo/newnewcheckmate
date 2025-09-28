@@ -19,7 +19,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { BookOpen, Users, FileText, Brain, Plus, User, LogOut, Settings, BarChart3, Calendar, Eye, Clock, Edit, Trash2, CheckCircle, Menu, Megaphone, MessageSquare, Bell, Save, Upload, Download, Shield, Mail, Bell as BellIcon, Palette, Globe, Lock, Key, Trash, AlertTriangle, CheckCircle2, Camera, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { BookOpen, Users, FileText, Brain, Plus, User, LogOut, Settings, BarChart3, Calendar, Eye, Clock, Edit, Trash2, CheckCircle, Menu, Megaphone, MessageSquare, Bell, Save, Upload, Download, Shield, Mail, Bell as BellIcon, Palette, Globe, Lock, Key, Trash, AlertTriangle, CheckCircle2, Camera, ChevronLeft, ChevronRight, X, Loader2 } from "lucide-react";
 import CourseManagement from "./CourseManagement";
 import InstructorContentManagement from "./InstructorContentManagement";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -139,6 +139,112 @@ export default function InstructorDashboard() {
     );
   };
 
+  // Settings save handlers
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    
+    setIsProfileSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileSettings),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Profile Updated",
+          description: "Your profile has been saved successfully.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save profile');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProfileSaving(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    if (!user?.id) return;
+    
+    setIsNotificationsSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Notification Settings Updated",
+          description: "Your notification preferences have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save notification settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNotificationsSaving(false);
+    }
+  };
+
+  const handleSavePrivacy = async () => {
+    if (!user?.id) return;
+    
+    setIsPrivacySaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Privacy Settings Updated",
+          description: "Your privacy settings have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save privacy settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPrivacySaving(false);
+    }
+  };
+
   // Settings state
   const [profileSettings, setProfileSettings] = useState({
     firstName: user?.firstName || '',
@@ -168,6 +274,11 @@ export default function InstructorDashboard() {
     allowMessages: true,
     dataSharing: false
   });
+
+  // Loading states for settings save operations
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
+  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
   
   // Analytics and Settings state
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
@@ -1764,9 +1875,18 @@ export default function InstructorDashboard() {
               />
             </div>
 
-            <Button onClick={() => {/* Handle save profile */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Profile
+            <Button onClick={handleSaveProfile} disabled={isProfileSaving}>
+              {isProfileSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Profile
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -1872,9 +1992,18 @@ export default function InstructorDashboard() {
               </div>
             </div>
 
-            <Button onClick={() => {/* Handle save notifications */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Notification Preferences
+            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
+              {isNotificationsSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Notification Preferences
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -1925,9 +2054,18 @@ export default function InstructorDashboard() {
               />
             </div>
 
-            <Button onClick={() => {/* Handle save privacy */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Privacy Settings
+            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
+              {isPrivacySaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Privacy Settings
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Users, BookOpen, FileText, Settings, TrendingUp, Shield, User, Plus, LogOut, ChevronLeft, ChevronRight, Search, Edit, Trash2, Lock, Eye, FileText as FileTextIcon, X, Camera, Save, Mail, MessageSquare, Calendar, Bell, AlertTriangle, CheckCircle, Clock, Archive, Download, Upload, Filter, SortAsc, SortDesc, MoreHorizontal, UserPlus, UserMinus, Copy, RefreshCw, BarChart3, PieChart, Activity, Target, Award, Clock3, TrendingDown, UserCheck, BookOpenCheck, GraduationCap } from "lucide-react";
+import { Users, BookOpen, FileText, Settings, TrendingUp, Shield, User, Plus, LogOut, ChevronLeft, ChevronRight, Search, Edit, Trash2, Lock, Eye, FileText as FileTextIcon, X, Camera, Save, Mail, MessageSquare, Calendar, Bell, AlertTriangle, CheckCircle, Clock, Archive, Download, Upload, Filter, SortAsc, SortDesc, MoreHorizontal, UserPlus, UserMinus, Copy, RefreshCw, BarChart3, PieChart, Activity, Target, Award, Clock3, TrendingDown, UserCheck, BookOpenCheck, GraduationCap, Loader2 } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 
 // Mock user data - will be replaced with actual authentication
@@ -70,6 +71,7 @@ const mockUsers = [
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
+  const { toast } = useToast();
   const [selectedTab, setSelectedTab] = useState<'overview' | 'users' | 'courses' | 'reports' | 'settings'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -149,6 +151,11 @@ export default function AdminDashboard() {
     showActivity: false,
     allowMessages: true
   });
+
+  // Loading states for settings save operations
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
+  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
   // Course Management state
   const [courses, setCourses] = useState([
@@ -406,6 +413,112 @@ export default function AdminDashboard() {
     
     // Navigate back to login page
     setLocation('/login');
+  };
+
+  // Settings save handlers
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    
+    setIsProfileSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileSettings),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Profile Updated",
+          description: "Your profile has been saved successfully.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save profile');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProfileSaving(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    if (!user?.id) return;
+    
+    setIsNotificationsSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Notification Settings Updated",
+          description: "Your notification preferences have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save notification settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNotificationsSaving(false);
+    }
+  };
+
+  const handleSavePrivacy = async () => {
+    if (!user?.id) return;
+    
+    setIsPrivacySaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Privacy Settings Updated",
+          description: "Your privacy settings have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save privacy settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPrivacySaving(false);
+    }
   };
 
   // User Management handlers
@@ -2013,9 +2126,18 @@ export default function AdminDashboard() {
               />
             </div>
 
-            <Button onClick={() => {/* Handle save profile */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Profile
+            <Button onClick={handleSaveProfile} disabled={isProfileSaving}>
+              {isProfileSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Profile
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -2132,9 +2254,18 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <Button onClick={() => {/* Handle save notifications */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Notification Preferences
+            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
+              {isNotificationsSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Notification Preferences
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -2196,9 +2327,18 @@ export default function AdminDashboard() {
               />
             </div>
 
-            <Button onClick={() => {/* Handle save privacy */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Privacy Settings
+            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
+              {isPrivacySaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Privacy Settings
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
