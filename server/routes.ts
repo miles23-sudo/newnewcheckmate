@@ -501,13 +501,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin statistics routes (Admin only)
   app.get("/api/admin/stats", requireAdmin, async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      const courses = await storage.getAllCourses();
+      const [users, courses, assignments, submissions, grades] = await Promise.all([
+        storage.getAllUsers(),
+        storage.getAllCourses(),
+        storage.getAllAssignments(),
+        storage.getAllSubmissions(),
+        storage.getAllGrades()
+      ]);
       
       const totalUsers = users.length;
       const totalStudents = users.filter(u => u.role === 'student').length;
       const totalInstructors = users.filter(u => u.role === 'instructor').length;
       const totalAdmins = users.filter(u => u.role === 'administrator').length;
+      
+      // Calculate AI grading usage - grades marked as AI-graded vs total submissions
+      const aiGrades = grades.filter(g => g.gradedBy === 'ai').length;
+      const aiGradingUsage = submissions.length > 0 ? (aiGrades / submissions.length) * 100 : 0;
       
       res.json({
         totalUsers,
@@ -516,8 +525,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         totalAdmins,
         totalCourses: courses.length,
         activeCourses: courses.filter(c => c.isActive).length,
-        totalAssignments: 87, // TODO: implement assignment counting
-        aiGradingUsage: 92.5, // TODO: implement AI grading stats
+        totalAssignments: assignments.length,
+        aiGradingUsage: Math.round(aiGradingUsage * 10) / 10, // Round to 1 decimal place
       });
     } catch (error) {
       console.error("Error fetching admin stats:", error);

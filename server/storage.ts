@@ -33,12 +33,14 @@ export interface IStorage {
   
   // Assignment operations
   getAssignment(id: string): Promise<Assignment | undefined>;
+  getAllAssignments(): Promise<Assignment[]>;
   getAssignmentsByCourse(courseId: string): Promise<Assignment[]>;
   createAssignment(assignment: InsertAssignment): Promise<Assignment>;
   updateAssignment(id: string, updates: Partial<Assignment>): Promise<Assignment | undefined>;
   
   // Submission operations
   getSubmission(id: string): Promise<Submission | undefined>;
+  getAllSubmissions(): Promise<Submission[]>;
   getSubmissionsByAssignment(assignmentId: string): Promise<Submission[]>;
   getSubmissionsByStudent(studentId: string): Promise<Submission[]>;
   createSubmission(submission: InsertSubmission): Promise<Submission>;
@@ -46,6 +48,7 @@ export interface IStorage {
   
   // Grade operations
   getGradeBySubmission(submissionId: string): Promise<Grade | undefined>;
+  getAllGrades(): Promise<Grade[]>;
   createGrade(grade: Omit<Grade, 'id' | 'createdAt'>): Promise<Grade>;
   
   // Announcement operations
@@ -173,6 +176,10 @@ export class DatabaseStorage implements IStorage {
     return assignment || undefined;
   }
 
+  async getAllAssignments(): Promise<Assignment[]> {
+    return await db.select().from(assignments);
+  }
+
   async getAssignmentsByCourse(courseId: string): Promise<Assignment[]> {
     return await db.select().from(assignments).where(eq(assignments.courseId, courseId));
   }
@@ -195,6 +202,10 @@ export class DatabaseStorage implements IStorage {
   async getSubmission(id: string): Promise<Submission | undefined> {
     const [submission] = await db.select().from(submissions).where(eq(submissions.id, id));
     return submission || undefined;
+  }
+
+  async getAllSubmissions(): Promise<Submission[]> {
+    return await db.select().from(submissions);
   }
 
   async getSubmissionsByAssignment(assignmentId: string): Promise<Submission[]> {
@@ -223,6 +234,10 @@ export class DatabaseStorage implements IStorage {
   async getGradeBySubmission(submissionId: string): Promise<Grade | undefined> {
     const [grade] = await db.select().from(grades).where(eq(grades.submissionId, submissionId));
     return grade || undefined;
+  }
+
+  async getAllGrades(): Promise<Grade[]> {
+    return await db.select().from(grades);
   }
 
   async createGrade(grade: Omit<Grade, 'id' | 'createdAt'>): Promise<Grade> {
