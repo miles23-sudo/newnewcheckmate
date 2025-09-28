@@ -7,10 +7,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
-import { BookOpen, Users, FileText, Settings, BarChart3, Calendar, Eye, Clock, Edit, Trash2, CheckCircle, Menu, Megaphone, MessageSquare, Bell, Save, Upload, Download, Shield, Mail, Bell as BellIcon, Palette, Globe, Lock, Key, Trash, AlertTriangle, CheckCircle2, Camera, ChevronLeft, ChevronRight, ChevronDown, X, User, LogOut, Home, GraduationCap, BookOpenCheck, Target, Award, TrendingUp, Plus, Filter } from "lucide-react";
+import { BookOpen, Users, FileText, Settings, BarChart3, Calendar, Eye, Clock, Edit, Trash2, CheckCircle, Menu, Megaphone, MessageSquare, Bell, Save, Upload, Download, Shield, Mail, Bell as BellIcon, Palette, Globe, Lock, Key, Trash, AlertTriangle, CheckCircle2, Camera, ChevronLeft, ChevronRight, ChevronDown, X, User, LogOut, Home, GraduationCap, BookOpenCheck, Target, Award, TrendingUp, Plus, Filter, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useUser } from "@/contexts/UserContext";
 
@@ -80,6 +81,8 @@ const mockEnrolledCourses = [
 export default function StudentDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
+  const { toast } = useToast();
+  
   const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'grades' | 'settings'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCoursesExpanded, setIsCoursesExpanded] = useState(true);
@@ -92,6 +95,34 @@ export default function StudentDashboard() {
     { id: 3, sender: "Alex Johnson", message: "Does anyone know if we can work in groups for the project?", timestamp: "2:35 PM", isInstructor: false },
     { id: 4, sender: "Dr. Martinez", message: "Yes, group work is encouraged for the final project. Max 3 people per group.", timestamp: "2:37 PM", isInstructor: true },
   ]);
+
+  // Settings state management
+  const [profileSettings, setProfileSettings] = useState({
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    email: user?.email || '',
+    major: 'Computer Science',
+    bio: 'Passionate computer science student with interests in web development and machine learning.'
+  });
+  
+  const [notificationSettings, setNotificationSettings] = useState({
+    emailAssignments: true,
+    emailGrades: true,
+    emailAnnouncements: true,
+    pushAssignments: true,
+    pushGrades: false,
+    pushAnnouncements: true
+  });
+  
+  const [privacySettings, setPrivacySettings] = useState({
+    profileVisibility: 'public',
+    showGrades: false,
+    allowMessages: true
+  });
+  
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
+  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
   // Mock notifications data with state management
   const [notifications, setNotifications] = useState([
@@ -178,6 +209,112 @@ export default function StudentDashboard() {
       };
       setChatMessages(prev => [...prev, newMessage]);
       setChatMessage("");
+    }
+  };
+
+  // Settings save handlers
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    
+    setIsProfileSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileSettings),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Profile Updated",
+          description: "Your profile has been saved successfully.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save profile');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProfileSaving(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    if (!user?.id) return;
+    
+    setIsNotificationsSaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Notification Settings Updated",
+          description: "Your notification preferences have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save notification settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNotificationsSaving(false);
+    }
+  };
+
+  const handleSavePrivacy = async () => {
+    if (!user?.id) return;
+    
+    setIsPrivacySaving(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "Privacy Settings Updated",
+          description: "Your privacy settings have been saved.",
+          variant: "default",
+        });
+      } else {
+        throw new Error(result.error || 'Failed to save privacy settings');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPrivacySaving(false);
     }
   };
 
@@ -535,16 +672,16 @@ export default function StudentDashboard() {
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
-                  value={user?.firstName || ''}
-                  onChange={(e) => {/* Handle change */}}
+                  value={profileSettings.firstName}
+                  onChange={(e) => setProfileSettings({...profileSettings, firstName: e.target.value})}
                 />
               </div>
               <div>
                 <Label htmlFor="lastName">Last Name</Label>
                 <Input
                   id="lastName"
-                  value={user?.lastName || ''}
-                  onChange={(e) => {/* Handle change */}}
+                  value={profileSettings.lastName}
+                  onChange={(e) => setProfileSettings({...profileSettings, lastName: e.target.value})}
                 />
               </div>
               <div>
@@ -552,8 +689,8 @@ export default function StudentDashboard() {
                 <Input
                   id="email"
                   type="email"
-                  value={user?.email || ''}
-                  onChange={(e) => {/* Handle change */}}
+                  value={profileSettings.email}
+                  onChange={(e) => setProfileSettings({...profileSettings, email: e.target.value})}
                 />
               </div>
               <div>
@@ -561,15 +698,16 @@ export default function StudentDashboard() {
                 <Input
                   id="studentId"
                   value={user?.studentId || ''}
-                  onChange={(e) => {/* Handle change */}}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
               <div>
                 <Label htmlFor="major">Major</Label>
                 <Input
                   id="major"
-                  value="Computer Science"
-                  onChange={(e) => {/* Handle change */}}
+                  value={profileSettings.major}
+                  onChange={(e) => setProfileSettings({...profileSettings, major: e.target.value})}
                 />
               </div>
             </div>
@@ -580,15 +718,24 @@ export default function StudentDashboard() {
                 id="bio"
                 rows={3}
                 className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
-                value="Passionate computer science student with interests in web development and machine learning."
-                onChange={(e) => {/* Handle change */}}
+                value={profileSettings.bio}
+                onChange={(e) => setProfileSettings({...profileSettings, bio: e.target.value})}
                 placeholder="Tell us a bit about yourself..."
               />
             </div>
 
-            <Button onClick={() => {/* Handle save profile */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Profile
+            <Button onClick={handleSaveProfile} disabled={isProfileSaving}>
+              {isProfileSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Profile
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -694,9 +841,18 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            <Button onClick={() => {/* Handle save notifications */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Notification Preferences
+            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
+              {isNotificationsSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Notification Preferences
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
@@ -747,9 +903,18 @@ export default function StudentDashboard() {
               />
             </div>
 
-            <Button onClick={() => {/* Handle save privacy */}}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Privacy Settings
+            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
+              {isPrivacySaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Privacy Settings
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>

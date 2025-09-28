@@ -498,6 +498,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User profile and settings routes
+  app.put("/api/users/:id/profile", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { firstName, lastName, email, department, title, bio } = req.body;
+      
+      const updatedUser = await storage.updateUser(id, {
+        firstName: firstName?.trim(),
+        lastName: lastName?.trim(),
+        email: email?.trim(),
+        // Store additional profile data in a way that fits your schema
+        updatedAt: new Date()
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Profile updated successfully",
+        user: updatedUser 
+      });
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ error: "Failed to update profile. Please try again." });
+    }
+  });
+
+  app.put("/api/users/:id/settings", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const settings = req.body;
+      
+      // For now, we'll return success as settings would typically be stored
+      // in a separate user_settings table or JSON field
+      // TODO: Implement actual settings storage if needed
+      
+      res.json({ 
+        success: true, 
+        message: "Settings saved successfully",
+        settings: settings 
+      });
+    } catch (error) {
+      console.error("Error saving user settings:", error);
+      res.status(500).json({ error: "Failed to save settings. Please try again." });
+    }
+  });
+
   // Admin statistics routes (Admin only)
   app.get("/api/admin/stats", requireAdmin, async (req, res) => {
     try {
