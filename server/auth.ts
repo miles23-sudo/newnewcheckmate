@@ -3,10 +3,16 @@ import { storage } from './storage';
 import { insertUserSchema } from '@shared/schema';
 import { z } from 'zod';
 
-// Login schema
+// Login schema - Keep minimal validation to preserve backward compatibility
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string()
+    .email('Please enter a valid email address')
+    .min(3, 'Email must be at least 3 characters')
+    .max(100, 'Email must be less than 100 characters')
+    .trim(), // Remove toLowerCase() to preserve existing email casing
+  password: z.string()
+    .min(1, 'Password is required')
+    .max(100, 'Password must be less than 100 characters'), // Remove regex to allow existing weak passwords
   role: z.enum(['student', 'instructor', 'administrator'])
 });
 

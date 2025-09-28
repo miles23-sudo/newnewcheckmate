@@ -20,7 +20,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(announcements);
     } catch (error) {
       console.error("Error fetching announcements:", error);
-      res.status(500).json({ error: "Failed to fetch announcements" });
+      res.status(500).json({ error: "Unable to load course announcements. Please refresh the page or contact support if the issue persists." });
     }
   });
 
@@ -31,7 +31,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(announcement);
     } catch (error) {
       console.error("Error creating announcement:", error);
-      res.status(400).json({ error: "Failed to create announcement" });
+      res.status(400).json({ error: "Cannot create announcement. Please check that all required fields are filled and try again." });
     }
   });
 
@@ -40,12 +40,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const updatedAnnouncement = await storage.updateAnnouncement(id, req.body);
       if (!updatedAnnouncement) {
-        return res.status(404).json({ error: "Announcement not found" });
+        return res.status(404).json({ error: "This announcement no longer exists. It may have been deleted by an instructor." });
       }
       res.json(updatedAnnouncement);
     } catch (error) {
       console.error("Error updating announcement:", error);
-      res.status(400).json({ error: "Failed to update announcement" });
+      res.status(400).json({ error: "Cannot save changes to announcement. Please check your input and try again." });
     }
   });
 
@@ -54,7 +54,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const deleted = await storage.deleteAnnouncement(id);
       if (!deleted) {
-        return res.status(404).json({ error: "Announcement not found" });
+        return res.status(404).json({ error: "This announcement no longer exists or has already been deleted." });
       }
       res.status(204).send();
     } catch (error) {
@@ -258,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("Login error:", error);
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: "Login service temporarily unavailable. Please try again in a moment." });
     }
   });
 
