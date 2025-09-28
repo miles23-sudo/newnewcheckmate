@@ -427,6 +427,170 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Authentication middleware for admin routes
+  const requireAdmin = (req: any, res: any, next: any) => {
+    if (!req.session?.user || req.session.user.role !== 'administrator') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  };
+
+  // User management routes (Admin only)
+  app.get("/api/users", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.get("/api/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  app.post("/api/users", requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.createUser(req.body);
+      res.status(201).json(user);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(400).json({ error: "Failed to create user" });
+    }
+  });
+
+  app.put("/api/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updatedUser = await storage.updateUser(id, req.body);
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(400).json({ error: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteUser(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
+  // Admin statistics routes (Admin only)
+  app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const courses = await storage.getAllCourses();
+      
+      const totalUsers = users.length;
+      const totalStudents = users.filter(u => u.role === 'student').length;
+      const totalInstructors = users.filter(u => u.role === 'instructor').length;
+      const totalAdmins = users.filter(u => u.role === 'administrator').length;
+      
+      res.json({
+        totalUsers,
+        totalStudents,
+        totalInstructors,
+        totalAdmins,
+        totalCourses: courses.length,
+        activeCourses: courses.filter(c => c.isActive).length,
+        totalAssignments: 87, // TODO: implement assignment counting
+        aiGradingUsage: 92.5, // TODO: implement AI grading stats
+      });
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      res.status(500).json({ error: "Failed to fetch statistics" });
+    }
+  });
+
+  app.get("/api/admin/activity", requireAdmin, async (req, res) => {
+    try {
+      // TODO: Implement activity logging system
+      // For now, return mock data
+      const activities = [
+        {
+          id: "1",
+          type: "user_registration",
+          description: "New student registered: Sarah Johnson",
+          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          status: "completed",
+        },
+        {
+          id: "2",
+          type: "course_creation",
+          description: "Course created: Advanced Physics by Dr. Chen",
+          timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          status: "completed",
+        },
+        {
+          id: "3",
+          type: "ai_grading",
+          description: "AI graded 25 assignments in CS101",
+          timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+          status: "completed",
+        },
+      ];
+      res.json(activities);
+    } catch (error) {
+      console.error("Error fetching admin activity:", error);
+      res.status(500).json({ error: "Failed to fetch activity logs" });
+    }
+  });
+
+  // Student-specific routes
+  app.get("/api/assignments/student/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const assignments = await storage.getSubmissionsByStudent(studentId);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching student assignments:", error);
+      res.status(500).json({ error: "Failed to fetch student assignments" });
+    }
+  });
+
+  app.get("/api/grades/student/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const submissions = await storage.getSubmissionsByStudent(studentId);
+      
+      // Get grades for each submission
+      const gradesPromises = submissions.map(submission => 
+        storage.getGradeBySubmission(submission.id)
+      );
+      const grades = await Promise.all(gradesPromises);
+      
+      // Filter out null grades and return
+      const validGrades = grades.filter(grade => grade !== undefined);
+      res.json(validGrades);
+    } catch (error) {
+      console.error("Error fetching student grades:", error);
+      res.status(500).json({ error: "Failed to fetch student grades" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ 

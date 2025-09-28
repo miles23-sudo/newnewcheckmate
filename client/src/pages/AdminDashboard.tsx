@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery } from "@tanstack/react-query";
@@ -77,8 +77,36 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'permissions' | 'detection' | 'logs'>('users');
   
+  // Fetch users from API
+  const { data: apiUsers = [], refetch: refetchUsers } = useQuery({
+    queryKey: ['api', 'users'],
+    queryFn: () => fetch('/api/users', { credentials: 'include' }).then(r => r.json()),
+    initialData: []
+  });
+  
+  // Transform API user data to match UI expectations
+  const transformedUsers = React.useMemo(() => {
+    return apiUsers.map((user: any) => ({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role === 'student' ? 'Student' : user.role === 'instructor' ? 'Professor' : 'Admin',
+      status: 'Active', // Default status since it's not in database schema
+      plagiarismFlags: 0, // Default value since it's not in database schema
+      lastLogin: 'Today', // Default value since it's not in database schema
+      firstName: user.firstName,
+      lastName: user.lastName,
+      originalRole: user.role
+    }));
+  }, [apiUsers]);
+  
   // User Management states
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState(transformedUsers);
+  
+  // Update users state when API data changes
+  React.useEffect(() => {
+    setUsers(transformedUsers);
+  }, [transformedUsers]);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -541,10 +569,10 @@ export default function AdminDashboard() {
     return matchesSearch && matchesStatus;
   });
 
-  // Mock data queries - will be replaced with actual API calls
+  // System statistics data from API
   const { data: systemStats } = useQuery({
-    queryKey: ['/api/admin/stats'],
-    enabled: false, // Disabled until backend is ready
+    queryKey: ['api', 'admin', 'stats'],
+    queryFn: () => fetch('/api/admin/stats', { credentials: 'include' }).then(r => r.json()),
     initialData: {
       totalUsers: 156,
       totalStudents: 128,
@@ -558,8 +586,8 @@ export default function AdminDashboard() {
   });
 
   const { data: recentActivity = [] } = useQuery({
-    queryKey: ['/api/admin/activity'],
-    enabled: false, // Disabled until backend is ready
+    queryKey: ['api', 'admin', 'activity'],
+    queryFn: () => fetch('/api/admin/activity', { credentials: 'include' }).then(r => r.json()),
     initialData: [
       {
         id: "1",

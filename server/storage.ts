@@ -13,10 +13,15 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
+  getUsersByRole(role: string): Promise<User[]>;
   
   // Course operations
   getCourse(id: string): Promise<Course | undefined>;
+  getAllCourses(): Promise<Course[]>;
   getCoursesByInstructor(instructorId: string): Promise<Course[]>;
   getEnrolledCourses(studentId: string): Promise<Course[]>;
   createCourse(course: InsertCourse): Promise<Course>;
@@ -70,6 +75,10 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
@@ -82,10 +91,32 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser || undefined;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    const result = await db.delete(users).where(eq(users.id, id));
+    return result.rowCount > 0;
+  }
+
+  async getUsersByRole(role: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.role, role as 'student' | 'instructor' | 'administrator'));
+  }
+
   // Course operations
   async getCourse(id: string): Promise<Course | undefined> {
     const [course] = await db.select().from(courses).where(eq(courses.id, id));
     return course || undefined;
+  }
+
+  async getAllCourses(): Promise<Course[]> {
+    return await db.select().from(courses);
   }
 
   async getCoursesByInstructor(instructorId: string): Promise<Course[]> {
