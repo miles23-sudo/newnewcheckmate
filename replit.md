@@ -80,3 +80,20 @@ Preferred communication style: Simple, everyday language.
 - **Class Variance Authority**: Utility for creating variant-based component APIs
 - **Tailwind Merge**: Utility for merging Tailwind CSS classes
 - **Date-fns**: Date manipulation and formatting library
+
+# Recent Changes
+
+## Settings Functionality Implementation (December 2024)
+- **API Endpoints**: Created comprehensive API endpoints for saving user profile and settings data:
+  - `/api/users/:id/profile` - For updating user profile information
+  - `/api/users/:id/settings` - For updating notification and privacy preferences
+- **Complete Settings Implementation**: Successfully implemented full settings functionality across all three user roles:
+  - **Student Dashboard**: Profile, notification, and privacy settings with working save functionality
+  - **Instructor Dashboard**: Profile, notification, and privacy settings with working save functionality  
+  - **Admin Dashboard**: Profile, notification, and privacy settings with working save functionality
+- **State Management**: Added comprehensive state management for all settings sections with proper form handling
+- **User Experience**: Implemented loading states, success/error feedback via toast notifications, and proper error handling
+- **API Integration**: Connected frontend forms to backend endpoints with proper authentication and validation
+- **Critical Issue Resolution**: Fixed non-functioning save buttons that were previously placeholder implementations
+
+This completes the settings functionality requirements ensuring that all settings changes are properly applied and saved across all user roles in the CHECKmate Learning Management System.
