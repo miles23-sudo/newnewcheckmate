@@ -293,6 +293,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Course routes
+  app.get("/api/courses/instructor/:instructorId", async (req, res) => {
+    try {
+      const { instructorId } = req.params;
+      const courses = await storage.getCoursesByInstructor(instructorId);
+      res.json(courses);
+    } catch (error) {
+      console.error("Error fetching instructor courses:", error);
+      res.status(500).json({ error: "Failed to fetch courses" });
+    }
+  });
+
+  app.get("/api/courses/student/:studentId", async (req, res) => {
+    try {
+      const { studentId } = req.params;
+      const courses = await storage.getEnrolledCourses(studentId);
+      res.json(courses);
+    } catch (error) {
+      console.error("Error fetching student courses:", error);
+      res.status(500).json({ error: "Failed to fetch enrolled courses" });
+    }
+  });
+
+  app.get("/api/courses/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const course = await storage.getCourse(id);
+      if (!course) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      res.json(course);
+    } catch (error) {
+      console.error("Error fetching course:", error);
+      res.status(500).json({ error: "Failed to fetch course" });
+    }
+  });
+
+  app.post("/api/courses", async (req, res) => {
+    try {
+      const course = await storage.createCourse(req.body);
+      res.status(201).json(course);
+    } catch (error) {
+      console.error("Error creating course:", error);
+      res.status(400).json({ error: "Failed to create course" });
+    }
+  });
+
+  app.put("/api/courses/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updatedCourse = await storage.updateCourse(id, req.body);
+      if (!updatedCourse) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      res.json(updatedCourse);
+    } catch (error) {
+      console.error("Error updating course:", error);
+      res.status(400).json({ error: "Failed to update course" });
+    }
+  });
+
+  // Assignment routes
+  app.get("/api/assignments/course/:courseId", async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const assignments = await storage.getAssignmentsByCourse(courseId);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching assignments:", error);
+      res.status(500).json({ error: "Failed to fetch assignments" });
+    }
+  });
+
+  app.get("/api/assignments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const assignment = await storage.getAssignment(id);
+      if (!assignment) {
+        return res.status(404).json({ error: "Assignment not found" });
+      }
+      res.json(assignment);
+    } catch (error) {
+      console.error("Error fetching assignment:", error);
+      res.status(500).json({ error: "Failed to fetch assignment" });
+    }
+  });
+
+  app.post("/api/assignments", async (req, res) => {
+    try {
+      const assignment = await storage.createAssignment(req.body);
+      res.status(201).json(assignment);
+    } catch (error) {
+      console.error("Error creating assignment:", error);
+      res.status(400).json({ error: "Failed to create assignment" });
+    }
+  });
+
+  app.put("/api/assignments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updatedAssignment = await storage.updateAssignment(id, req.body);
+      if (!updatedAssignment) {
+        return res.status(404).json({ error: "Assignment not found" });
+      }
+      res.json(updatedAssignment);
+    } catch (error) {
+      console.error("Error updating assignment:", error);
+      res.status(400).json({ error: "Failed to update assignment" });
+    }
+  });
+
+  // Enrollment routes
+  app.get("/api/enrollments/:courseId", async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const enrollments = await storage.getEnrollments(courseId);
+      res.json(enrollments);
+    } catch (error) {
+      console.error("Error fetching enrollments:", error);
+      res.status(500).json({ error: "Failed to fetch enrollments" });
+    }
+  });
+
+  app.post("/api/enrollments", async (req, res) => {
+    try {
+      const { courseId, studentId } = req.body;
+      const enrollment = await storage.enrollStudent(courseId, studentId);
+      res.status(201).json(enrollment);
+    } catch (error) {
+      console.error("Error creating enrollment:", error);
+      res.status(400).json({ error: "Failed to create enrollment" });
+    }
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ 
