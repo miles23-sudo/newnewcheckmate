@@ -77,12 +77,19 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [statusFilter, setStatusFilter] = useState("All Status");
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'permissions' | 'detection' | 'logs'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'pending' | 'permissions' | 'detection' | 'logs'>('users');
   
   // Fetch users from API
   const { data: apiUsers = [], refetch: refetchUsers } = useQuery({
     queryKey: ['api', 'users'],
     queryFn: () => fetch('/api/users', { credentials: 'include' }).then(r => r.json()),
+    initialData: []
+  });
+
+  // Fetch pending registrations from API
+  const { data: pendingUsers = [], refetch: refetchPendingUsers } = useQuery({
+    queryKey: ['api', 'admin', 'pending-registrations'],
+    queryFn: () => fetch('/api/admin/pending-registrations', { credentials: 'include' }).then(r => r.json()),
     initialData: []
   });
   
@@ -93,12 +100,13 @@ export default function AdminDashboard() {
       name: `${user.firstName} ${user.lastName}`,
       email: user.email,
       role: user.role === 'student' ? 'Student' : user.role === 'instructor' ? 'Professor' : 'Admin',
-      status: 'Active', // Default status since it's not in database schema
+      status: user.status === 'approved' ? 'Active' : user.status === 'pending' ? 'Pending' : 'Rejected',
       plagiarismFlags: 0, // Default value since it's not in database schema
       lastLogin: 'Today', // Default value since it's not in database schema
       firstName: user.firstName,
       lastName: user.lastName,
-      originalRole: user.role
+      originalRole: user.role,
+      originalStatus: user.status
     }));
   }, [apiUsers]);
   
@@ -587,8 +595,75 @@ export default function AdminDashboard() {
     setIsSystemSettingsOpen(true);
   };
 
-  const handleTabChange = (tab: 'users' | 'permissions' | 'detection' | 'logs') => {
+  const handleTabChange = (tab: 'users' | 'pending' | 'permissions' | 'detection' | 'logs') => {
     setActiveAdminTab(tab);
+  };
+
+  // Pending registrations handlers
+  const handleApproveUser = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'approved' }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "User Approved",
+          description: "The user has been approved and can now access the system.",
+          variant: "default",
+        });
+        refetchPendingUsers();
+        refetchUsers();
+      } else {
+        throw new Error(result.error || 'Failed to approve user');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to approve user. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRejectUser = async (userId: string) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: 'rejected' }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "User Rejected",
+          description: "The user registration has been rejected.",
+          variant: "default",
+        });
+        refetchPendingUsers();
+        refetchUsers();
+      } else {
+        throw new Error(result.error || 'Failed to reject user');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to reject user. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Course Management handlers
@@ -756,15 +831,28 @@ export default function AdminDashboard() {
       {/* Navigation Tabs */}
       <div className="flex space-x-1 border-b">
         <Button
-          variant={selectedTab === 'users' ? "default" : "ghost"}
+          variant={activeAdminTab === 'users' ? "default" : "ghost"}
           className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
-          onClick={() => setSelectedTab('users')}
+          onClick={() => handleTabChange('users')}
         >
           <Users className="mr-2 h-4 w-4" />
           User Management
         </Button>
         <Button
-          variant="ghost"
+          variant={activeAdminTab === 'pending' ? "default" : "ghost"}
+          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+          onClick={() => handleTabChange('pending')}
+        >
+          <UserCheck className="mr-2 h-4 w-4" />
+          Pending Registrations
+          {pendingUsers.length > 0 && (
+            <Badge variant="destructive" className="ml-2 px-1 py-0 text-xs">
+              {pendingUsers.length}
+            </Badge>
+          )}
+        </Button>
+        <Button
+          variant={activeAdminTab === 'permissions' ? "default" : "ghost"}
           className="rounded-none border-b-2 border-transparent"
           onClick={() => handleTabChange('permissions')}
         >
@@ -905,6 +993,147 @@ export default function AdminDashboard() {
           </Button>
         </div>
       </div>
+    </div>
+  );
+
+  const renderPendingRegistrations = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Pending Registrations</h1>
+        <div className="flex items-center space-x-2">
+          <Badge variant="outline" className="px-3 py-1">
+            {pendingUsers.length} Pending
+          </Badge>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex space-x-1 border-b">
+        <Button
+          variant={activeAdminTab === 'users' ? "default" : "ghost"}
+          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+          onClick={() => handleTabChange('users')}
+        >
+          <Users className="mr-2 h-4 w-4" />
+          User Management
+        </Button>
+        <Button
+          variant={activeAdminTab === 'pending' ? "default" : "ghost"}
+          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+          onClick={() => handleTabChange('pending')}
+        >
+          <UserCheck className="mr-2 h-4 w-4" />
+          Pending Registrations
+          {pendingUsers.length > 0 && (
+            <Badge variant="destructive" className="ml-2 px-1 py-0 text-xs">
+              {pendingUsers.length}
+            </Badge>
+          )}
+        </Button>
+        <Button
+          variant={activeAdminTab === 'permissions' ? "default" : "ghost"}
+          className="rounded-none border-b-2 border-transparent"
+          onClick={() => handleTabChange('permissions')}
+        >
+          <Lock className="mr-2 h-4 w-4" />
+          Permissions & Access
+        </Button>
+        <Button
+          variant="ghost"
+          className="rounded-none border-b-2 border-transparent"
+          onClick={() => handleTabChange('detection')}
+        >
+          <Eye className="mr-2 h-4 w-4" />
+          Detection Settings
+        </Button>
+        <Button
+          variant="ghost"
+          className="rounded-none border-b-2 border-transparent"
+          onClick={() => handleTabChange('logs')}
+        >
+          <FileTextIcon className="mr-2 h-4 w-4" />
+          System Logs
+        </Button>
+      </div>
+
+      {/* Pending Registrations Content */}
+      {pendingUsers.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <UserCheck className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Pending Registrations</h3>
+            <p className="text-muted-foreground">
+              All user registrations have been processed. New registrations will appear here for your approval.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>User Registration Requests</CardTitle>
+            <CardDescription>
+              Review and approve or reject new user registrations
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Student ID</TableHead>
+                  <TableHead>Registration Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingUsers.map((user: any) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">
+                      {user.firstName} {user.lastName}
+                    </TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {user.role === 'student' ? 'Student' : user.role === 'instructor' ? 'Instructor' : 'Administrator'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {user.studentId || '-'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end space-x-2">
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleApproveUser(user.id)}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Approve
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => handleRejectUser(user.id)}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 
@@ -2761,6 +2990,7 @@ export default function AdminDashboard() {
           {selectedTab === 'overview' && renderOverview()}
           {selectedTab === 'users' && (
               activeAdminTab === 'users' && renderUserManagement() ||
+              activeAdminTab === 'pending' && renderPendingRegistrations() ||
               activeAdminTab === 'permissions' && renderPermissionsAccess() ||
               activeAdminTab === 'detection' && renderDetectionSettings() ||
               activeAdminTab === 'logs' && renderSystemLogs()

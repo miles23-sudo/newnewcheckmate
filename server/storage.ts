@@ -116,6 +116,10 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).where(eq(users.role, role as 'student' | 'instructor' | 'administrator'));
   }
 
+  async getUsersByStatus(status: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.status, status as 'pending' | 'approved' | 'rejected'));
+  }
+
   // Course operations
   async getCourse(id: string): Promise<Course | undefined> {
     const [course] = await db.select().from(courses).where(eq(courses.id, id));

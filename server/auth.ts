@@ -45,6 +45,15 @@ export class AuthService {
         throw new Error(`Access denied. This account is registered as a ${user.role}, but you're trying to sign in as a ${role}.`);
       }
 
+      // Check if user is approved
+      if (user.status !== 'approved') {
+        if (user.status === 'pending') {
+          throw new Error('Your account is pending approval. Please wait for an administrator to approve your account.');
+        } else if (user.status === 'rejected') {
+          throw new Error('Your account registration has been rejected. Please contact the administrator.');
+        }
+      }
+
       // Verify password
       const isPasswordValid = await bcrypt.compare(password, user.password);
       

@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   role: text("role").$type<'student' | 'instructor' | 'administrator'>().notNull(),
+  status: text("status").$type<'pending' | 'approved' | 'rejected'>().notNull().default('pending'),
   studentId: text("student_id"), // Optional for students
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

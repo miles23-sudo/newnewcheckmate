@@ -656,6 +656,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin pending registrations routes (Admin only)
+  app.get("/api/admin/pending-registrations", requireAdmin, async (req, res) => {
+    try {
+      const pendingUsers = await storage.getUsersByStatus('pending');
+      res.json(pendingUsers);
+    } catch (error) {
+      console.error("Error fetching pending registrations:", error);
+      res.status(500).json({ error: "Failed to fetch pending registrations" });
+    }
+  });
+
+  app.put("/api/admin/users/:id/status", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Status must be 'approved' or 'rejected'" });
+      }
+      
+      const updatedUser = await storage.updateUser(id, { status });
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({ 
+        success: true,
+        message: `User ${status} successfully`,
+        user: updatedUser 
+      });
+    } catch (error) {
+      console.error("Error updating user status:", error);
+      res.status(500).json({ error: "Failed to update user status" });
+    }
+  });
+
   // Student-specific routes
   app.get("/api/assignments/student/:studentId", async (req, res) => {
     try {
