@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertAnnouncementSchema, insertMaterialSchema, insertSubmissionSchema, insertChatMessageSchema } from "@shared/schema";
+import { insertAnnouncementSchema, insertMaterialSchema, insertSubmissionSchema, insertChatMessageSchema, grades, submissions, assignments } from "@shared/schema";
+import { db } from "./storage";
+import { eq } from "drizzle-orm";
 import { AuthService } from "./auth";
 import { processSubmissionWithAI, getPlagiarismReport, getAIGrade } from "./ai";
 
@@ -669,17 +671,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/grades/student/:studentId", async (req, res) => {
     try {
       const { studentId } = req.params;
-      const submissions = await storage.getSubmissionsByStudent(studentId);
       
-      // Get grades for each submission
-      const gradesPromises = submissions.map(submission => 
-        storage.getGradeBySubmission(submission.id)
-      );
-      const grades = await Promise.all(gradesPromises);
+      // Get grades with course information using joins
+      const gradesWithCourses = await db
+        .select({
+          id: grades.id,
+          submissionId: grades.submissionId,
+          score: grades.score,
+          maxScore: assignments.maxScore,
+          feedback: grades.feedback,
+          rubricScores: grades.rubricScores,
+          gradedBy: grades.gradedBy,
+          gradedAt: grades.gradedAt,
+          createdAt: grades.createdAt,
+          courseId: assignments.courseId,
+          assignmentId: submissions.assignmentId,
+          assignmentTitle: assignments.title
+        })
+        .from(grades)
+        .innerJoin(submissions, eq(grades.submissionId, submissions.id))
+        .innerJoin(assignments, eq(submissions.assignmentId, assignments.id))
+        .where(eq(submissions.studentId, studentId));
       
-      // Filter out null grades and return
-      const validGrades = grades.filter(grade => grade !== undefined);
-      res.json(validGrades);
+      res.json(gradesWithCourses);
     } catch (error) {
       console.error("Error fetching student grades:", error);
       res.status(500).json({ error: "Failed to fetch student grades" });

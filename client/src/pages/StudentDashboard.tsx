@@ -778,6 +778,48 @@ export default function StudentDashboard() {
     </div>
   );
 
+  // Fetch student grades
+  const { data: studentGrades = [], isLoading: isGradesLoading } = useQuery({
+    queryKey: ['/api/grades/student', user?.id],
+    queryFn: () => fetch(`/api/grades/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!user?.id,
+  });
+
+  // Calculate course grades by grouping submissions
+  const courseGrades = useMemo(() => {
+    if (!studentGrades.length || !enrolledCourses.length) return [];
+    
+    const gradesByCourse: { [courseId: string]: { grades: any[], courseInfo: any } } = {};
+    
+    // Group grades by course (now using courseId directly from API)
+    studentGrades.forEach((grade: any) => {
+      const courseId = grade.courseId;
+      
+      if (courseId) {
+        const courseInfo = enrolledCourses.find((c: any) => c.id === courseId);
+        if (courseInfo) {
+          if (!gradesByCourse[courseId]) {
+            gradesByCourse[courseId] = { grades: [], courseInfo };
+          }
+          gradesByCourse[courseId].grades.push(grade);
+        }
+      }
+    });
+    
+    // Calculate average grades per course
+    return Object.values(gradesByCourse).map(({ grades, courseInfo }) => {
+      const totalScore = grades.reduce((sum, g) => sum + (g.score || 0), 0);
+      const totalPossible = grades.reduce((sum, g) => sum + (g.maxScore || 100), 0);
+      const average = totalPossible > 0 ? Math.round((totalScore / totalPossible) * 100) : 0;
+      
+      return {
+        ...courseInfo,
+        averageGrade: average,
+        totalGrades: grades.length
+      };
+    });
+  }, [studentGrades, enrolledCourses]);
+
   const renderGrades = () => (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -787,44 +829,56 @@ export default function StudentDashboard() {
           Export Transcript
         </Button>
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      
+      {isGradesLoading || isCoursesLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-2/3 mb-4"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/2 mx-auto"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : courseGrades.length > 0 ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {courseGrades.map((course: any) => (
+            <Card key={course.id}>
+              <CardHeader>
+                <CardTitle>{course.name}</CardTitle>
+                <CardDescription>
+                  {course.instructor} • {course.totalGrades} assignment{course.totalGrades !== 1 ? 's' : ''}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center">
+                  <div className={`text-3xl font-bold ${
+                    course.averageGrade >= 90 ? 'text-green-600' : 
+                    course.averageGrade >= 80 ? 'text-blue-600' : 
+                    course.averageGrade >= 70 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {course.averageGrade}%
+                  </div>
+                  <p className="text-sm text-muted-foreground">Current Grade</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
         <Card>
-          <CardHeader>
-            <CardTitle>CS101 - Introduction to Computer Science</CardTitle>
-            <CardDescription>Dr. Maria Martinez</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">88%</div>
-              <p className="text-sm text-muted-foreground">Current Grade</p>
-            </div>
+          <CardContent className="p-6 text-center">
+            <p className="text-muted-foreground">No grades available yet</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Complete assignments to see your grades here
+            </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>CS201 - Data Structures and Algorithms</CardTitle>
-            <CardDescription>Dr. John Smith</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">92%</div>
-              <p className="text-sm text-muted-foreground">Current Grade</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>CS301 - Web Development</CardTitle>
-            <CardDescription>Dr. Sarah Johnson</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">85%</div>
-              <p className="text-sm text-muted-foreground">Current Grade</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </div>
   );
 
