@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertAnnouncementSchema, insertMaterialSchema, insertSubmissionSchema, insertChatMessageSchema, grades, submissions, assignments } from "@shared/schema";
-import { db } from "./storage";
+import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { AuthService } from "./auth";
 import { processSubmissionWithAI, getPlagiarismReport, getAIGrade } from "./ai";

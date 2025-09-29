@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -89,7 +89,16 @@ interface Assignment {
 export default function InstructorDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings'>('overview');
+  // Initialize tab from URL hash, or default to 'overview'
+  const getInitialTab = (): 'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings' => {
+    const hash = window.location.hash.replace('#', '');
+    if (['overview', 'course-management', 'assignments', 'grading', 'content', 'settings'].includes(hash)) {
+      return hash as 'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings';
+    }
+    return 'overview';
+  };
+
+  const [selectedTab, setSelectedTab] = useState<'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings'>(getInitialTab());
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
@@ -140,6 +149,34 @@ export default function InstructorDashboard() {
       prev.map(notification => ({ ...notification, isRead: true }))
     );
   };
+
+  // Set initial URL hash if not present
+  useEffect(() => {
+    const currentHash = window.location.hash.replace('#', '');
+    if (!currentHash || !['overview', 'course-management', 'assignments', 'grading', 'content', 'settings'].includes(currentHash)) {
+      window.history.replaceState(null, '', `#${selectedTab}`);
+    }
+  }, []); // Run only on mount
+  
+  // Custom function to handle tab changes with URL hash persistence
+  const handleTabChange = (tab: 'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings') => {
+    setSelectedTab(tab);
+    // Update URL hash
+    window.history.pushState(null, '', `#${tab}`);
+  };
+
+  // Listen for hash changes (browser back/forward navigation)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (['overview', 'course-management', 'assignments', 'grading', 'content', 'settings'].includes(hash)) {
+        setSelectedTab(hash as 'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Settings save handlers
   const handleSaveProfile = async () => {
@@ -2362,7 +2399,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'overview' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('overview')}
+              onClick={() => handleTabChange('overview')}
               data-testid="button-tab-overview"
               title={isSidebarCollapsed ? "Dashboard" : ""}
             >
@@ -2372,7 +2409,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'course-management' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('course-management')}
+              onClick={() => handleTabChange('course-management')}
               data-testid="button-tab-course-management"
               title={isSidebarCollapsed ? "Course Management" : ""}
             >
@@ -2382,7 +2419,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'assignments' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('assignments')}
+              onClick={() => handleTabChange('assignments')}
               data-testid="button-tab-assignments"
               title={isSidebarCollapsed ? "Assignments" : ""}
             >
@@ -2392,7 +2429,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'grading' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('grading')}
+              onClick={() => handleTabChange('grading')}
               data-testid="button-tab-grading"
               title={isSidebarCollapsed ? "Review" : ""}
             >
@@ -2402,7 +2439,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'content' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('content')}
+              onClick={() => handleTabChange('content')}
               data-testid="button-tab-content"
               title={isSidebarCollapsed ? "Content Management" : ""}
             >
@@ -2412,7 +2449,7 @@ export default function InstructorDashboard() {
             <Button
               variant={selectedTab === 'settings' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('settings')}
+              onClick={() => handleTabChange('settings')}
               data-testid="button-tab-settings"
               title={isSidebarCollapsed ? "Settings" : ""}
             >
