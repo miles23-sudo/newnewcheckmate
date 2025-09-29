@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
-import { BookOpen, Users, Plus, Settings, Trash2, Edit } from "lucide-react";
+import { BookOpen, Users, Plus, Settings, Trash2, Edit, FileText, Brain } from "lucide-react";
 import { insertCourseSchema, type Course, type InsertCourse } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useUser } from "@/contexts/UserContext";
@@ -324,7 +324,7 @@ export default function CourseManagement() {
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-courses">{courses.length}</div>
             <p className="text-xs text-muted-foreground">
-              {courses.filter(c => c.isActive).length} active
+              {courses.filter((c: Course) => c.isActive).length} active
             </p>
           </CardContent>
         </Card>
@@ -351,7 +351,7 @@ export default function CourseManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-active-courses">
-              {courses.filter(c => c.isActive).length}
+              {courses.filter((c: Course) => c.isActive).length}
             </div>
             <p className="text-xs text-muted-foreground">
               Currently running
@@ -362,7 +362,7 @@ export default function CourseManagement() {
 
       {/* Course List */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {courses.map((course) => (
+        {courses.map((course: Course) => (
           <Card key={course.id} className="hover-elevate">
             <CardHeader>
               <div className="flex justify-between items-start">
@@ -393,7 +393,7 @@ export default function CourseManagement() {
                 <div className="flex justify-between text-sm">
                   <span>Created:</span>
                   <span className="text-muted-foreground">
-                    {course.createdAt.toLocaleDateString()}
+                    {new Date(course.createdAt).toLocaleDateString()}
                   </span>
                 </div>
                 
@@ -604,7 +604,7 @@ export default function CourseManagement() {
                     </div>
                     <div>
                       <Label className="text-sm font-medium">Created</Label>
-                      <p className="text-sm text-muted-foreground">{managingCourse.createdAt.toLocaleDateString()}</p>
+                      <p className="text-sm text-muted-foreground">{managingCourse.createdAt ? new Date(managingCourse.createdAt).toLocaleDateString() : 'N/A'}</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -626,7 +626,7 @@ export default function CourseManagement() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm font-medium">Last Updated:</span>
-                      <span className="text-sm text-muted-foreground">{managingCourse.updatedAt.toLocaleDateString()}</span>
+                      <span className="text-sm text-muted-foreground">{managingCourse.updatedAt ? new Date(managingCourse.updatedAt).toLocaleDateString() : 'N/A'}</span>
                     </div>
                   </CardContent>
                 </Card>
