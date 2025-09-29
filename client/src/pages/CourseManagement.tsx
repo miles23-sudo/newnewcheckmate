@@ -51,72 +51,31 @@ export default function CourseManagement() {
   // Fetch instructor's courses
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ['/api/courses/instructor', MOCK_INSTRUCTOR_ID],
-    enabled: false, // Disabled until backend is ready
-    initialData: [
-      {
-        id: "1",
-        title: "Introduction to Computer Science",
-        description: "A comprehensive introduction to programming concepts and computer science fundamentals.",
-        code: "CS101",
-        section: "A",
-        instructorId: MOCK_INSTRUCTOR_ID,
-        isActive: true,
-        createdAt: new Date("2024-01-15"),
-        updatedAt: new Date("2024-09-01"),
-      },
-      {
-        id: "2", 
-        title: "Data Structures and Algorithms",
-        description: "Advanced study of data structures, algorithms, and their applications in software development.",
-        code: "CS201",
-        section: "A",
-        instructorId: MOCK_INSTRUCTOR_ID,
-        isActive: true,
-        createdAt: new Date("2024-02-01"),
-        updatedAt: new Date("2024-08-15"),
-      },
-      {
-        id: "3",
-        title: "Data Structures and Algorithms",
-        description: "Advanced study of data structures, algorithms, and their applications in software development.",
-        code: "CS201",
-        section: "B",
-        instructorId: MOCK_INSTRUCTOR_ID,
-        isActive: true,
-        createdAt: new Date("2024-02-01"),
-        updatedAt: new Date("2024-08-15"),
-      },
-      {
-        id: "4",
-        title: "Web Development Fundamentals",
-        description: "Introduction to modern web development using HTML, CSS, JavaScript, and React.",
-        code: "CS301",
-        section: "A",
-        instructorId: MOCK_INSTRUCTOR_ID,
-        isActive: false,
-        createdAt: new Date("2024-03-01"),
-        updatedAt: new Date("2024-06-30"),
-      },
-    ],
+    queryFn: () => fetch(`/api/courses/instructor/${MOCK_INSTRUCTOR_ID}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   // Mock enrollment data
   const { data: enrollmentData = {} } = useQuery({
     queryKey: ['/api/courses/enrollments'],
     enabled: false,
-    initialData: {
-      "1": 28,
-      "2": 22, 
-      "3": 15,
-    } as Record<string, number>,
+    initialData: {} as Record<string, number>,
   });
 
   // Create course mutation
   const createCourseMutation = useMutation({
     mutationFn: async (courseData: InsertCourse) => {
-      // Mock API call - will be replaced with actual implementation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { id: Date.now().toString(), ...courseData, isActive: true, createdAt: new Date(), updatedAt: new Date() };
+      const response = await fetch('/api/courses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(courseData),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to create course');
+      }
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses/instructor'] });
@@ -139,9 +98,18 @@ export default function CourseManagement() {
   // Update course mutation
   const updateCourseMutation = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Course> & { id: string }) => {
-      // Mock API call - will be replaced with actual implementation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { id, ...updates, updatedAt: new Date() };
+      const response = await fetch(`/api/courses/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(updates),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update course');
+      }
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses/instructor'] });
@@ -164,9 +132,14 @@ export default function CourseManagement() {
   // Delete course mutation
   const deleteCourseMutation = useMutation({
     mutationFn: async (courseId: string) => {
-      // Mock API call - will be replaced with actual implementation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { deleted: true, id: courseId };
+      const response = await fetch(`/api/courses/${courseId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to delete course');
+      }
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/courses/instructor'] });

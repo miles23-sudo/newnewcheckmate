@@ -354,6 +354,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/courses/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteCourse(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Course not found" });
+      }
+      res.json({ success: true, message: "Course deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting course:", error);
+      res.status(500).json({ error: "Failed to delete course" });
+    }
+  });
+
   // Assignment routes
   app.get("/api/assignments/course/:courseId", async (req, res) => {
     try {

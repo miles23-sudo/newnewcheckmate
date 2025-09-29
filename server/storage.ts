@@ -157,6 +157,14 @@ export class DatabaseStorage implements IStorage {
     return updatedCourse || undefined;
   }
 
+  async deleteCourse(id: string): Promise<boolean> {
+    const [deletedCourse] = await db
+      .delete(courses)
+      .where(eq(courses.id, id))
+      .returning();
+    return !!deletedCourse;
+  }
+
   // Enrollment operations
   async enrollStudent(courseId: string, studentId: string): Promise<Enrollment> {
     const [enrollment] = await db
