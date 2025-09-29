@@ -2228,7 +2228,7 @@ export default function InstructorDashboard() {
     <div className="min-h-screen bg-background">
         <div className="border-b">
           <div className="flex h-16 items-center px-4">
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentSection('dashboard')}>
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-white" />
               </div>
