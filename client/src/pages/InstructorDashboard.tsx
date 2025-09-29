@@ -1947,14 +1947,15 @@ export default function InstructorDashboard() {
               </div>
             </div>
 
-            {/* Profile Form */}
+            {/* Profile Form - Read-only for instructors */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
                   id="firstName"
                   value={profileSettings.firstName}
-                  onChange={(e) => setProfileSettings({...profileSettings, firstName: e.target.value})}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
               <div>
@@ -1962,7 +1963,8 @@ export default function InstructorDashboard() {
                 <Input
                   id="lastName"
                   value={profileSettings.lastName}
-                  onChange={(e) => setProfileSettings({...profileSettings, lastName: e.target.value})}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
               <div>
@@ -1971,7 +1973,8 @@ export default function InstructorDashboard() {
                   id="email"
                   type="email"
                   value={profileSettings.email}
-                  onChange={(e) => setProfileSettings({...profileSettings, email: e.target.value})}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
               <div>
@@ -1979,7 +1982,8 @@ export default function InstructorDashboard() {
                 <Input
                   id="department"
                   value={profileSettings.department}
-                  onChange={(e) => setProfileSettings({...profileSettings, department: e.target.value})}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
               <div>
@@ -1987,7 +1991,8 @@ export default function InstructorDashboard() {
                 <Input
                   id="title"
                   value={profileSettings.title}
-                  onChange={(e) => setProfileSettings({...profileSettings, title: e.target.value})}
+                  readOnly
+                  className="bg-gray-50 dark:bg-gray-700"
                 />
               </div>
             </div>
@@ -1997,26 +2002,19 @@ export default function InstructorDashboard() {
               <textarea
                 id="bio"
                 rows={3}
-                className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
+                className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
                 value={profileSettings.bio}
-                onChange={(e) => setProfileSettings({...profileSettings, bio: e.target.value})}
+                readOnly
                 placeholder="Tell us a bit about yourself..."
               />
             </div>
 
-            <Button onClick={handleSaveProfile} disabled={isProfileSaving}>
-              {isProfileSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Profile
-                </>
-              )}
-            </Button>
+            <div className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <Lock className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                Profile information is read-only for instructors. Contact an administrator to update your profile.
+              </p>
+            </div>
           </CardContent>
         </Card>
 

@@ -474,6 +474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
+
   // User management routes (Admin only)
   app.get("/api/users", requireAdmin, async (req, res) => {
     try {
@@ -537,8 +538,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User profile and settings routes
-  app.put("/api/users/:id/profile", async (req, res) => {
+  // User profile and settings routes (Admin only)
+  app.put("/api/users/:id/profile", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const { firstName, lastName, email, department, title, bio } = req.body;
