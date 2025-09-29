@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -163,6 +163,34 @@ export default function StudentDashboard() {
     enabled: !!selectedCourseId,
   });
 
+  // Query to fetch announcements for notification generation
+  const { data: allAnnouncements = [] } = useQuery({
+    queryKey: ['/api/announcements', 'all-courses'],
+    queryFn: async () => {
+      if (!enrolledCourses.length) return [];
+      const promises = enrolledCourses.map((course: any) =>
+        fetch(`/api/announcements/course/${course.id}`, { credentials: 'include' }).then(r => r.json())
+      );
+      const results = await Promise.all(promises);
+      return results.flat();
+    },
+    enabled: !!enrolledCourses.length,
+  });
+
+  // Query to fetch assignments for notification generation
+  const { data: allAssignments = [] } = useQuery({
+    queryKey: ['/api/assignments', 'all-courses'],
+    queryFn: async () => {
+      if (!enrolledCourses.length) return [];
+      const promises = enrolledCourses.map((course: any) =>
+        fetch(`/api/assignments/course/${course.id}`, { credentials: 'include' }).then(r => r.json())
+      );
+      const results = await Promise.all(promises);
+      return results.flat();
+    },
+    enabled: !!enrolledCourses.length,
+  });
+
   // Settings state management
   const [profileSettings, setProfileSettings] = useState({
     firstName: user?.firstName || '',
@@ -192,44 +220,118 @@ export default function StudentDashboard() {
   const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
   // Mock notifications data with state management
-  const [notifications, setNotifications] = useState([
-    {
-      id: "1",
-      type: "info",
-      title: "New Assignment Posted",
-      message: "Assignment 3: Data Structures is now available",
-      timestamp: "2 hours ago",
-      isRead: false,
-      priority: "medium"
-    },
-    {
-      id: "2",
-      type: "warning",
-      title: "Assignment Due Soon",
-      message: "Assignment 2: Algorithms is due in 2 days",
-      timestamp: "1 day ago",
-      isRead: false,
-      priority: "high"
-    },
-    {
-      id: "3",
-      type: "success",
-      title: "Grade Posted",
-      message: "Your grade for Assignment 1 has been posted",
-      timestamp: "3 days ago",
-      isRead: true,
-      priority: "low"
-    },
-    {
-      id: "4",
-      type: "info",
-      title: "Course Announcement",
-      message: "Midterm exam schedule has been updated",
-      timestamp: "4 hours ago",
-      isRead: false,
-      priority: "medium"
+  // Generate base notifications from course data (immutable)
+  const baseNotifications = useMemo(() => {
+    const notifications: any[] = [];
+    
+    if (!enrolledCourses.length) return notifications;
+
+    // Generate notifications from real announcements
+    allAnnouncements.forEach((announcement: any) => {
+      const course = enrolledCourses.find((c: any) => c.id === announcement.courseId);
+      if (course) {
+        const timeSince = new Date(announcement.createdAt);
+        const hoursAgo = Math.floor((Date.now() - timeSince.getTime()) / (1000 * 60 * 60));
+        
+        notifications.push({
+          id: `announcement-${announcement.id}`,
+          type: announcement.isImportant ? "warning" : "info",
+          title: "New Announcement",
+          message: `${course.code}: ${announcement.title}`,
+          timestamp: hoursAgo < 24 ? `${hoursAgo} hours ago` : `${Math.floor(hoursAgo / 24)} days ago`,
+          isRead: false,
+          priority: announcement.isImportant ? "high" : "medium",
+          courseId: course.id,
+          sourceId: announcement.id,
+          sourceType: 'announcement'
+        });
+      }
+    });
+
+    // Generate notifications from assignments
+    allAssignments.forEach((assignment: any) => {
+      const course = enrolledCourses.find((c: any) => c.id === assignment.courseId);
+      if (course && assignment.isPublished) {
+        const timeSince = new Date(assignment.createdAt);
+        const hoursAgo = Math.floor((Date.now() - timeSince.getTime()) / (1000 * 60 * 60));
+        
+        // New assignment notification
+        notifications.push({
+          id: `assignment-${assignment.id}`,
+          type: "info",
+          title: "New Assignment",
+          message: `${course.code}: ${assignment.title}`,
+          timestamp: hoursAgo < 24 ? `${hoursAgo} hours ago` : `${Math.floor(hoursAgo / 24)} days ago`,
+          isRead: false,
+          priority: "medium",
+          courseId: course.id,
+          sourceId: assignment.id,
+          sourceType: 'assignment'
+        });
+
+        // Due date warning if assignment has a due date
+        if (assignment.dueDate) {
+          const dueDate = new Date(assignment.dueDate);
+          const daysUntilDue = Math.floor((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          
+          if (daysUntilDue <= 3 && daysUntilDue >= 0) {
+            notifications.push({
+              id: `due-${assignment.id}`,
+              type: "warning",
+              title: "Assignment Due Soon",
+              message: `${course.code}: ${assignment.title} due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`,
+              timestamp: "Now",
+              isRead: false,
+              priority: "high", 
+              courseId: course.id,
+              sourceId: assignment.id,
+              sourceType: 'assignment-due'
+            });
+          }
+        }
+      }
+    });
+
+    // Sort by priority and date
+    return notifications.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
+    });
+  }, [enrolledCourses, allAnnouncements, allAssignments]);
+
+  // Persistent notification UI state (read/deleted)
+  const [notificationState, setNotificationState] = useState<{
+    readIds: Set<string>;
+    deletedIds: Set<string>;
+  }>(() => {
+    const saved = localStorage.getItem('student-notification-state');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        readIds: new Set(parsed.readIds || []),
+        deletedIds: new Set(parsed.deletedIds || [])
+      };
     }
-  ]);
+    return { readIds: new Set(), deletedIds: new Set() };
+  });
+
+  // Save notification state to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('student-notification-state', JSON.stringify({
+      readIds: Array.from(notificationState.readIds),
+      deletedIds: Array.from(notificationState.deletedIds)
+    }));
+  }, [notificationState]);
+
+  // Merge base notifications with UI state
+  const notifications = useMemo(() => {
+    return baseNotifications
+      .filter(notification => !notificationState.deletedIds.has(notification.id))
+      .map(notification => ({
+        ...notification,
+        isRead: notificationState.readIds.has(notification.id)
+      }));
+  }, [baseNotifications, notificationState]);
 
   const handleLogout = () => {
     // Use the logout function from context
@@ -243,25 +345,27 @@ export default function StudentDashboard() {
     setLocation(`/class/${courseId}`);
   };
 
-  // Notification handlers
+  // Notification handlers - now work with persistent state
   const markNotificationAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(notification => 
-        notification.id === notificationId 
-          ? { ...notification, isRead: true }
-          : notification
-      )
-    );
+    setNotificationState(prev => ({
+      ...prev,
+      readIds: new Set([...prev.readIds, notificationId])
+    }));
   };
 
   const deleteNotification = (notificationId: string) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== notificationId));
+    setNotificationState(prev => ({
+      ...prev,
+      deletedIds: new Set([...prev.deletedIds, notificationId])
+    }));
   };
 
   const markAllAsRead = () => {
-    setNotifications(prev => 
-      prev.map(notification => ({ ...notification, isRead: true }))
-    );
+    const allNotificationIds = notifications.map(n => n.id);
+    setNotificationState(prev => ({
+      ...prev,
+      readIds: new Set([...prev.readIds, ...allNotificationIds])
+    }));
   };
 
   // Chat handlers
