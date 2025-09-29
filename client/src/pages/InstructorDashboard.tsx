@@ -415,28 +415,33 @@ export default function InstructorDashboard() {
   // Create assignment mutation
   const createAssignmentMutation = useMutation({
     mutationFn: async (data: AssignmentFormData) => {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return data;
-    },
-    onSuccess: (data) => {
-      const course = courses.find(c => c.id === data.courseId);
-      const newAssignment: Assignment = {
-        id: Date.now().toString(),
-        title: data.title,
-        courseCode: course?.code || "",
-        courseTitle: course?.title || "",
-        courseId: data.courseId,
-        description: data.description,
-        dueDate: data.dueDate,
-        maxScore: data.maxScore,
-        isPublished: data.isPublished,
-        submissionsCount: 0,
-        gradedCount: 0,
-        createdAt: new Date().toISOString(),
-      };
+      const response = await fetch('/api/assignments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          courseId: data.courseId,
+          title: data.title,
+          description: data.description,
+          instructions: data.description, // Use description as instructions for now
+          maxScore: data.maxScore,
+          dueDate: data.dueDate ? new Date(data.dueDate) : null,
+          rubric: null, // Default to null for now
+        }),
+      });
       
-      setAssignments(prev => [...prev, newAssignment]);
+      if (!response.ok) {
+        throw new Error('Failed to create assignment');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (newAssignment) => {
+      // Refresh assignments list by invalidating queries
+      queryClient.invalidateQueries({ queryKey: ['/api/assignments'] });
+      
       assignmentForm.reset();
       setIsCreateDialogOpen(false);
       toast({
@@ -456,27 +461,33 @@ export default function InstructorDashboard() {
   // Update assignment mutation
   const updateAssignmentMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: AssignmentFormData }) => {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return { id, data };
+      const response = await fetch(`/api/assignments/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          courseId: data.courseId,
+          title: data.title,
+          description: data.description,
+          instructions: data.description, // Use description as instructions for now
+          maxScore: data.maxScore,
+          dueDate: data.dueDate ? new Date(data.dueDate) : null,
+          rubric: null, // Default to null for now
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update assignment');
+      }
+      
+      return await response.json();
     },
-    onSuccess: ({ id, data }) => {
-      const course = courses.find(c => c.id === data.courseId);
-      setAssignments(prev => prev.map(assignment => 
-        assignment.id === id 
-          ? {
-              ...assignment,
-              title: data.title,
-              courseCode: course?.code || assignment.courseCode,
-              courseTitle: course?.title || assignment.courseTitle,
-              courseId: data.courseId,
-              description: data.description,
-              dueDate: data.dueDate,
-              maxScore: data.maxScore,
-              isPublished: data.isPublished,
-            }
-          : assignment
-      ));
+    onSuccess: (updatedAssignment) => {
+      // Refresh assignments list by invalidating queries
+      queryClient.invalidateQueries({ queryKey: ['/api/assignments'] });
+      
       assignmentForm.reset();
       setIsEditDialogOpen(false);
       setEditingAssignment(null);

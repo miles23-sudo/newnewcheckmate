@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +83,13 @@ export default function StudentDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
   const { toast } = useToast();
+
+  // Query to fetch student's enrolled courses
+  const { data: enrolledCourses = [], isLoading: isCoursesLoading } = useQuery({
+    queryKey: ['/api/courses/student', user?.id],
+    queryFn: () => fetch(`/api/courses/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!user?.id,
+  });
   
   const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'grades' | 'settings'>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -334,7 +342,7 @@ export default function StudentDashboard() {
             <BookOpen className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockEnrolledCourses.length}</div>
+            <div className="text-2xl font-bold">{enrolledCourses.length}</div>
             <p className="text-xs text-muted-foreground">
               Currently enrolled
             </p>
@@ -366,16 +374,16 @@ export default function StudentDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {mockEnrolledCourses.map((course) => (
+                {enrolledCourses.map((course: any) => (
                   <div key={course.id} className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">{course.code}</span>
-                      <span className="text-sm text-muted-foreground">{course.progress}%</span>
+                      <span className="text-sm text-muted-foreground">0%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
                         className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `${course.progress}%` }}
+                        style={{ width: `0%` }}
                       ></div>
                     </div>
                   </div>
@@ -419,11 +427,17 @@ export default function StudentDashboard() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">My Courses</h1>
-        <Badge variant="outline">{mockEnrolledCourses.length} courses</Badge>
+        <Badge variant="outline">{enrolledCourses.length} courses</Badge>
       </div>
       
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {mockEnrolledCourses.map((course, index) => (
+      {isCoursesLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
+          <span className="text-muted-foreground">Loading your courses...</span>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {enrolledCourses.map((course: any, index: number) => (
           <Card 
             key={course.id}
             className="cursor-pointer hover:shadow-md transition-shadow"
@@ -434,7 +448,7 @@ export default function StudentDashboard() {
                 <div className="space-y-1">
                   <CardTitle className="text-lg">{course.code}</CardTitle>
                   <CardDescription className="text-sm font-medium">
-                    {course.title}
+                    {course.title || 'No description available'}
                   </CardDescription>
                 </div>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
@@ -448,19 +462,19 @@ export default function StudentDashboard() {
                 </div>
               </div>
               <p className="text-sm text-muted-foreground">
-                {course.instructor}
+                {course.description || 'No description available'}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Progress</span>
-                  <span>{course.progress}%</span>
+                  <span>Status</span>
+                  <span>{course.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div 
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                    style={{ width: `${course.progress}%` }}
+                    style={{ width: `0%` }}
                   ></div>
                 </div>
               </div>
@@ -468,28 +482,29 @@ export default function StudentDashboard() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="flex items-center space-x-2">
                   <Award className="h-4 w-4 text-muted-foreground" />
-                  <span>Grade: {course.currentGrade}%</span>
+                  <span>Grade: --</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>Due: {course.nextDue}</span>
+                  <span>Created: {new Date(course.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-2">
                 <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                  <span>3 credits</span>
+                  <span>Course ID: {course.id}</span>
                   <span>•</span>
-                  <span>Active</span>
+                  <span>{course.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </div>
             </CardContent>
           </Card>
         ))}
-      </div>
+        </div>
+      )}
 
-      {mockEnrolledCourses.length === 0 && (
+      {enrolledCourses.length === 0 && !isCoursesLoading && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
@@ -1063,8 +1078,14 @@ export default function StudentDashboard() {
             </Button>
             {!isSidebarCollapsed && isCoursesExpanded && (
               <div className="space-y-1 ml-6">
-                {mockEnrolledCourses.map((course, index) => (
-                  <Button
+                {isCoursesLoading ? (
+                  <div className="flex items-center justify-center py-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading courses...</span>
+                  </div>
+                ) : (
+                  enrolledCourses.map((course: any, index: number) => (
+                    <Button
                     key={course.id}
                     variant="ghost"
                     onClick={() => handleCourseClick(course.id)}
@@ -1091,8 +1112,9 @@ export default function StudentDashboard() {
                         </div>
                       )}
                     </div>
-                  </Button>
-                ))}
+                    </Button>
+                  ))
+                )}
               </div>
             )}
             <Button
