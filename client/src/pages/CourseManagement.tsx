@@ -14,15 +14,19 @@ import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Users, Plus, Settings, Trash2, Edit } from "lucide-react";
 import { insertCourseSchema, type Course, type InsertCourse } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-
-// Mock instructor ID - will be replaced with actual authentication
-const MOCK_INSTRUCTOR_ID = "instructor-1";
+import { useUser } from "@/contexts/UserContext";
 
 export default function CourseManagement() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [managingCourse, setManagingCourse] = useState<Course | null>(null);
   const { toast } = useToast();
+  const { user } = useUser();
+
+  // If user is not loaded yet, show loading
+  if (!user) {
+    return <div>Loading...</div>;
+  }
 
 
   // Create course form
@@ -33,7 +37,7 @@ export default function CourseManagement() {
       description: "",
       code: "",
       section: "A",
-      instructorId: MOCK_INSTRUCTOR_ID,
+      instructorId: user.id,
     },
   });
 
@@ -50,8 +54,8 @@ export default function CourseManagement() {
 
   // Fetch instructor's courses
   const { data: courses = [], isLoading } = useQuery({
-    queryKey: ['/api/courses/instructor', MOCK_INSTRUCTOR_ID],
-    queryFn: () => fetch(`/api/courses/instructor/${MOCK_INSTRUCTOR_ID}`, { credentials: 'include' }).then(r => r.json()),
+    queryKey: ['/api/courses/instructor', user.id],
+    queryFn: () => fetch(`/api/courses/instructor/${user.id}`, { credentials: 'include' }).then(r => r.json()),
   });
 
   // Mock enrollment data
