@@ -1,0 +1,38 @@
+STUDENT PANEL
+
+In My Courses button, there's no content in course page when you click it.
+notification button doesn't work.
+chat room is not specific messages per course.
+when the page refresh it doesn't stay on the page you open, instead it auttomatically back in dahsboard.
+students profile/settings should be simplified by showing only their information and cannot change/edit any details. (only the admin)
+when you change theme mode, the change of mode in part of dashboard is kinda delay.
+the CHECKmate name and logo should be functioning.
+
+
+INSTRUCTOR PANEL 
+
+the chat room should not be generalized, but per course/section.
+the delete button is not positioned properly.
+the content of the Manage button of a course is not fully functioning like the Manage Assignments, Manage Students, View Grades.
+the container of Manages button doesn't show properly the content of it.
+when the page refresh it doesn't stay on the page you open, instead it auttomatically back in dahsboard.
+the CHECKmate name and logo should be functioning.
+Instructors profile/settings should be simplified by showing only their information and cannot change/edit any details. (only the admin)
+the view button in Assignments page isn't functioning/ no content showed.
+when creating an assignment it doesn't save.
+the container of the Grade button doesn't show the content properly.
+the content of the View button is too simple and empty.
+the Regrade button container doesn't show the content properly.
+the grades still doesn't shown even when it is already Auto grade.
+the View Analytics is still not working real time.
+the create rubrics/custom rubrics should be place on the assignment page when the instructor create a new task to create new rubrics specifically to the assignmement.
+the newly create announcement is not showed on the page.
+same with the posting a new material/ cant upload a file or resources.
+
+
+ADMIN PANEL
+
+the quick actions isnt functioning( can be remove/not)
+admin should be accepting/approving the new register account.
+admin should have the full acces on all the panel.
+In adding new user content, remove the Plagiarism flags
