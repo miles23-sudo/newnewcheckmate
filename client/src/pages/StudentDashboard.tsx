@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,7 +91,57 @@ export default function StudentDashboard() {
     enabled: !!user?.id,
   });
   
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'grades' | 'settings'>('overview');
+  // Initialize tab from URL hash, localStorage, or default to 'overview'
+  const getInitialTab = (): 'overview' | 'courses' | 'grades' | 'settings' => {
+    // Check URL hash first
+    const hash = window.location.hash.replace('#', '');
+    if (['overview', 'courses', 'grades', 'settings'].includes(hash)) {
+      return hash as 'overview' | 'courses' | 'grades' | 'settings';
+    }
+    
+    // Fall back to localStorage
+    const savedTab = localStorage.getItem('student-dashboard-tab');
+    if (savedTab && ['overview', 'courses', 'grades', 'settings'].includes(savedTab)) {
+      return savedTab as 'overview' | 'courses' | 'grades' | 'settings';
+    }
+    
+    // Default to overview
+    return 'overview';
+  };
+
+  const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'grades' | 'settings'>(getInitialTab());
+
+  // Set initial URL hash if not present
+  useEffect(() => {
+    const currentHash = window.location.hash.replace('#', '');
+    if (!currentHash || !['overview', 'courses', 'grades', 'settings'].includes(currentHash)) {
+      window.history.replaceState(null, '', `#${selectedTab}`);
+    }
+  }, []); // Run only on mount
+  
+  // Custom function to handle tab changes with URL and localStorage persistence
+  const handleTabChange = (tab: 'overview' | 'courses' | 'grades' | 'settings') => {
+    setSelectedTab(tab);
+    // Update URL hash
+    window.history.pushState(null, '', `#${tab}`);
+    // Save to localStorage as backup
+    localStorage.setItem('student-dashboard-tab', tab);
+  };
+
+  // Listen for hash changes (browser back/forward navigation)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (['overview', 'courses', 'grades', 'settings'].includes(hash)) {
+        setSelectedTab(hash as 'overview' | 'courses' | 'grades' | 'settings');
+        localStorage.setItem('student-dashboard-tab', hash);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isCoursesExpanded, setIsCoursesExpanded] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -1047,7 +1097,7 @@ export default function StudentDashboard() {
             <Button
               variant={selectedTab === 'overview' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('overview')}
+              onClick={() => handleTabChange('overview')}
               data-testid="button-tab-overview"
               title={isSidebarCollapsed ? "Dashboard" : ""}
             >
@@ -1058,7 +1108,7 @@ export default function StudentDashboard() {
             <Button
               variant={selectedTab === 'courses' ? "default" : "ghost"}
               onClick={() => {
-                setSelectedTab('courses');
+                handleTabChange('courses');
                 setIsCoursesExpanded(!isCoursesExpanded);
               }}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
@@ -1120,7 +1170,7 @@ export default function StudentDashboard() {
             <Button
               variant={selectedTab === 'grades' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('grades')}
+              onClick={() => handleTabChange('grades')}
               data-testid="button-tab-grades"
               title={isSidebarCollapsed ? "Grades" : ""}
             >
@@ -1130,7 +1180,7 @@ export default function StudentDashboard() {
             <Button
               variant={selectedTab === 'settings' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
-              onClick={() => setSelectedTab('settings')}
+              onClick={() => handleTabChange('settings')}
               data-testid="button-tab-settings"
               title={isSidebarCollapsed ? "Settings" : ""}
             >
