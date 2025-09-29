@@ -36,6 +36,7 @@ interface Course {
   id: string;
   title: string;
   code: string;
+  section?: string;
   isActive?: boolean;
 }
 
@@ -89,6 +90,7 @@ export default function InstructorDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
   const [selectedTab, setSelectedTab] = useState<'overview' | 'course-management' | 'assignments' | 'grading' | 'content' | 'settings'>('overview');
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   
   // Review functionality state
@@ -569,7 +571,9 @@ export default function InstructorDashboard() {
                          (filterStatus === "published" && assignment.isPublished) ||
                          (filterStatus === "drafts" && !assignment.isPublished);
     
-    return matchesSearch && matchesFilter;
+    const matchesCourse = selectedCourseId === null || assignment.courseId === selectedCourseId;
+    
+    return matchesSearch && matchesFilter && matchesCourse;
   });
 
   // Sign out handler
@@ -1040,8 +1044,33 @@ export default function InstructorDashboard() {
         {/* Header Section */}
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-bold">Assignments</h2>
-            <p className="text-muted-foreground">Manage assignments across all your courses</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold">Assignments</h2>
+              {selectedCourseId && (
+                <Badge variant="secondary" className="text-sm">
+                  {(() => {
+                    const course = courses.find(c => c.id === selectedCourseId);
+                    return course ? `${course.code}${course.section ? ` - Section ${course.section}` : ''}` : 'Selected Course';
+                  })()}
+                </Badge>
+              )}
+            </div>
+            <p className="text-muted-foreground">
+              {selectedCourseId 
+                ? `Manage assignments for ${courses.find(c => c.id === selectedCourseId)?.title || 'selected course'}`
+                : "Manage assignments across all your courses"
+              }
+            </p>
+            {selectedCourseId && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedCourseId(null)}
+                className="mt-1 p-0 h-auto text-sm text-muted-foreground hover:text-foreground"
+              >
+                ← View all courses
+              </Button>
+            )}
           </div>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -1764,19 +1793,71 @@ export default function InstructorDashboard() {
               {teachingCourses.map((course: Course) => {
                 const stats = courseStats[course.id] || { students: 0, assignments: 0, pendingGrades: 0 };
                 return (
-                  <div key={course.id} className="p-3 border rounded-lg">
-                    <div className="flex justify-between items-start">
+                  <div key={course.id} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-3">
                       <div>
-                        <h3 className="font-medium" data-testid={`text-course-title-${course.id}`}>
+                        <h3 className="font-medium text-base" data-testid={`text-course-title-${course.id}`}>
                           {course.title}
                         </h3>
-                        <p className="text-sm text-muted-foreground">{course.code}</p>
+                        <p className="text-sm text-muted-foreground">{course.code}{course.section ? ` - Section ${course.section}` : ''}</p>
                       </div>
                       <Badge variant="outline">{stats.students} students</Badge>
                     </div>
-                    <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                      <span>{stats.assignments} assignments</span>
-                      <span>{stats.pendingGrades} pending</span>
+                    
+                    <div className="flex gap-4 mb-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <FileText className="h-4 w-4" />
+                        {stats.assignments} assignments
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        {stats.pendingGrades} pending
+                      </span>
+                    </div>
+
+                    {/* Manage Buttons */}
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCourseId(course.id);
+                          setSelectedTab('assignments');
+                        }}
+                        className="flex-1"
+                        data-testid={`button-manage-assignments-${course.id}`}
+                      >
+                        <FileText className="mr-1 h-3 w-3" />
+                        Assignments
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCourseId(course.id);
+                          setSelectedTab('course-management');
+                        }}
+                        className="flex-1"
+                        data-testid={`button-manage-students-${course.id}`}
+                      >
+                        <Users className="mr-1 h-3 w-3" />
+                        Students  
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          setSelectedCourseId(course.id);
+                          setSelectedTab('grading');
+                        }}
+                        className="flex-1"
+                        data-testid={`button-manage-grades-${course.id}`}
+                      >
+                        <BarChart3 className="mr-1 h-3 w-3" />
+                        Grades
+                      </Button>
                     </div>
                   </div>
                 );
