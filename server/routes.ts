@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertAnnouncementSchema, insertMaterialSchema, insertSubmissionSchema } from "@shared/schema";
+import { insertAnnouncementSchema, insertMaterialSchema, insertSubmissionSchema, insertChatMessageSchema } from "@shared/schema";
 import { AuthService } from "./auth";
 import { processSubmissionWithAI, getPlagiarismReport, getAIGrade } from "./ai";
 
@@ -227,6 +227,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching AI grade:", error);
       res.status(500).json({ error: "Failed to fetch AI grade" });
+    }
+  });
+
+  // Chat message routes
+  app.get("/api/chat/course/:courseId", async (req, res) => {
+    try {
+      const { courseId } = req.params;
+      const messages = await storage.getChatMessagesByCourse(courseId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching chat messages:", error);
+      res.status(500).json({ error: "Failed to load chat messages. Please refresh the page or contact support if the issue persists." });
+    }
+  });
+
+  app.post("/api/chat", async (req, res) => {
+    try {
+      const validatedData = insertChatMessageSchema.parse(req.body);
+      const message = await storage.createChatMessage(validatedData);
+      res.status(201).json(message);
+    } catch (error) {
+      console.error("Error creating chat message:", error);
+      res.status(400).json({ error: "Failed to send message. Please check your input and try again." });
     }
   });
 

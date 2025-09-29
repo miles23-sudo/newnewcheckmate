@@ -147,12 +147,21 @@ export default function StudentDashboard() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
-  const [chatMessages, setChatMessages] = useState([
-    { id: 1, sender: "Dr. Martinez", message: "Welcome to the course chat! Feel free to ask any questions.", timestamp: "2:30 PM", isInstructor: true },
-    { id: 2, sender: "System", message: "Assignment 3 has been posted. Due date: November 15th", timestamp: "2:32 PM", isInstructor: false },
-    { id: 3, sender: "Alex Johnson", message: "Does anyone know if we can work in groups for the project?", timestamp: "2:35 PM", isInstructor: false },
-    { id: 4, sender: "Dr. Martinez", message: "Yes, group work is encouraged for the final project. Max 3 people per group.", timestamp: "2:37 PM", isInstructor: true },
-  ]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+
+  // Set default course for chat when courses load
+  useEffect(() => {
+    if (enrolledCourses.length > 0 && !selectedCourseId) {
+      setSelectedCourseId(enrolledCourses[0].id);
+    }
+  }, [enrolledCourses, selectedCourseId]);
+
+  // Query to fetch chat messages for selected course
+  const { data: chatMessages = [], isLoading: isChatLoading, refetch: refetchChatMessages } = useQuery({
+    queryKey: ['/api/chat/course', selectedCourseId],
+    queryFn: () => fetch(`/api/chat/course/${selectedCourseId}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!selectedCourseId,
+  });
 
   // Settings state management
   const [profileSettings, setProfileSettings] = useState({
@@ -256,17 +265,42 @@ export default function StudentDashboard() {
   };
 
   // Chat handlers
-  const sendMessage = () => {
-    if (chatMessage.trim() && user) {
-      const newMessage = {
-        id: Date.now(),
-        sender: user.firstName + " " + user.lastName,
-        message: chatMessage.trim(),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isInstructor: false
-      };
-      setChatMessages(prev => [...prev, newMessage]);
-      setChatMessage("");
+  const sendMessage = async () => {
+    if (chatMessage.trim() && user && selectedCourseId) {
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            courseId: selectedCourseId,
+            senderId: user.id,
+            content: chatMessage.trim()
+          })
+        });
+
+        if (response.ok) {
+          // Clear input and refetch messages to get the new message
+          setChatMessage("");
+          refetchChatMessages();
+        } else {
+          console.error('Failed to send message');
+          toast({
+            title: "Error",
+            description: "Failed to send message. Please try again.",
+            variant: "destructive"
+          });
+        }
+      } catch (error) {
+        console.error('Error sending message:', error);
+        toast({
+          title: "Error", 
+          description: "Failed to send message. Please check your connection.",
+          variant: "destructive"
+        });
+      }
     }
   };
 
@@ -1306,40 +1340,98 @@ export default function StudentDashboard() {
       <Dialog open={isChatOpen} onOpenChange={setIsChatOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Course Chat</DialogTitle>
-            <DialogDescription>
-              Chat with your classmates and instructors
-            </DialogDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>Course Chat</DialogTitle>
+                <DialogDescription>
+                  Chat with your classmates and instructors
+                </DialogDescription>
+              </div>
+              {enrolledCourses.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  <label className="text-sm text-muted-foreground">Course:</label>
+                  <select 
+                    value={selectedCourseId || ''}
+                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                    className="px-3 py-1 border rounded-md text-sm bg-background border-border"
+                  >
+                    {enrolledCourses.map((course: any) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           <div className="flex flex-col h-96">
             {/* Chat Messages */}
             <div className="flex-1 border rounded-lg p-4 bg-gray-50 dark:bg-gray-900 overflow-y-auto space-y-3">
-              {chatMessages.map((message) => (
-                <div 
-                  key={message.id} 
-                  className={`flex ${message.isInstructor ? 'justify-start' : 'justify-end'}`}
-                >
-                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                    message.isInstructor 
-                      ? 'bg-blue-100 dark:bg-blue-900 text-gray-900 dark:text-gray-100' 
-                      : 'bg-blue-600 text-white'
-                  }`}>
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className={`text-xs font-medium ${
-                        message.isInstructor ? 'text-blue-600 dark:text-blue-400' : 'text-blue-100'
-                      }`}>
-                        {message.sender}
-                      </span>
-                      <span className={`text-xs ${
-                        message.isInstructor ? 'text-gray-500 dark:text-gray-400' : 'text-blue-200'
-                      }`}>
-                        {message.timestamp}
-                      </span>
-                    </div>
-                    <p className="text-sm">{message.message}</p>
-                  </div>
+              {isChatLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
+                  <span className="text-muted-foreground">Loading chat messages...</span>
                 </div>
-              ))}
+              ) : chatMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No messages yet</h3>
+                  <p className="text-muted-foreground">Start a conversation with your classmates and instructors!</p>
+                </div>
+              ) : (
+                chatMessages.map((message: any) => {
+                  const isInstructor = message.sender?.role === 'instructor';
+                  const senderName = message.sender ? 
+                    `${message.sender.firstName} ${message.sender.lastName}` : 
+                    'Unknown';
+                  const timestamp = new Date(message.createdAt).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  });
+                  const isCurrentUser = message.senderId === user?.id;
+                  
+                  return (
+                    <div 
+                      key={message.id} 
+                      className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+                    >
+                      <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                        isCurrentUser
+                          ? 'bg-blue-600 text-white' 
+                          : isInstructor
+                          ? 'bg-green-100 dark:bg-green-900 text-gray-900 dark:text-gray-100'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
+                      }`}>
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className={`text-xs font-medium ${
+                            isCurrentUser
+                              ? 'text-blue-100'
+                              : isInstructor 
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-gray-600 dark:text-gray-400'
+                          }`}>
+                            {isCurrentUser ? 'You' : senderName}
+                            {isInstructor && !isCurrentUser && (
+                              <span className="ml-1 text-xs bg-green-200 dark:bg-green-700 px-1 py-0.5 rounded text-green-800 dark:text-green-200">
+                                Instructor
+                              </span>
+                            )}
+                          </span>
+                          <span className={`text-xs ${
+                            isCurrentUser
+                              ? 'text-blue-200'
+                              : 'text-gray-500 dark:text-gray-400'
+                          }`}>
+                            {timestamp}
+                          </span>
+                        </div>
+                        <p className="text-sm">{message.content}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
             
             {/* Chat Input */}

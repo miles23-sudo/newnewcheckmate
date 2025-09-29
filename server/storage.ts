@@ -1,9 +1,9 @@
 import { 
-  users, courses, assignments, submissions, enrollments, grades, announcements, materials,
+  users, courses, assignments, submissions, enrollments, grades, announcements, materials, chatMessages,
   type User, type InsertUser, type Course, type InsertCourse,
   type Assignment, type InsertAssignment, type Submission, type InsertSubmission,
   type Enrollment, type Grade, type Announcement, type InsertAnnouncement,
-  type Material, type InsertMaterial
+  type Material, type InsertMaterial, type ChatMessage, type InsertChatMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
@@ -64,6 +64,10 @@ export interface IStorage {
   createMaterial(material: InsertMaterial): Promise<Material>;
   updateMaterial(id: string, updates: Partial<Material>): Promise<Material | undefined>;
   deleteMaterial(id: string): Promise<boolean>;
+
+  // Chat message operations
+  getChatMessagesByCourse(courseId: string): Promise<ChatMessage[]>;
+  createChatMessage(chatMessage: InsertChatMessage): Promise<ChatMessage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -317,6 +321,34 @@ export class DatabaseStorage implements IStorage {
   async deleteMaterial(id: string): Promise<boolean> {
     const result = await db.delete(materials).where(eq(materials.id, id));
     return result.rowCount > 0;
+  }
+
+  // Chat message operations
+  async getChatMessagesByCourse(courseId: string): Promise<ChatMessage[]> {
+    return await db
+      .select({
+        id: chatMessages.id,
+        courseId: chatMessages.courseId,
+        senderId: chatMessages.senderId,
+        content: chatMessages.content,
+        createdAt: chatMessages.createdAt,
+        updatedAt: chatMessages.updatedAt,
+        sender: {
+          id: users.id,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          role: users.role,
+        }
+      })
+      .from(chatMessages)
+      .innerJoin(users, eq(chatMessages.senderId, users.id))
+      .where(eq(chatMessages.courseId, courseId))
+      .orderBy(chatMessages.createdAt);
+  }
+
+  async createChatMessage(chatMessage: InsertChatMessage): Promise<ChatMessage> {
+    const [newMessage] = await db.insert(chatMessages).values(chatMessage).returning();
+    return newMessage;
   }
 }
 

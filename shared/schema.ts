@@ -123,11 +123,22 @@ export const plagiarismReports = pgTable("plagiarism_reports", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Chat messages table
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  courseId: varchar("course_id").notNull().references(() => courses.id),
+  senderId: varchar("sender_id").notNull().references(() => users.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   courses: many(courses),
   enrollments: many(enrollments),
   submissions: many(submissions),
+  chatMessages: many(chatMessages),
 }));
 
 export const coursesRelations = relations(courses, ({ one, many }) => ({
@@ -139,6 +150,7 @@ export const coursesRelations = relations(courses, ({ one, many }) => ({
   assignments: many(assignments),
   announcements: many(announcements),
   materials: many(materials),
+  chatMessages: many(chatMessages),
 }));
 
 export const enrollmentsRelations = relations(enrollments, ({ one }) => ({
@@ -208,6 +220,17 @@ export const plagiarismReportsRelations = relations(plagiarismReports, ({ one })
   }),
 }));
 
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  course: one(courses, {
+    fields: [chatMessages.courseId],
+    references: [courses.id],
+  }),
+  sender: one(users, {
+    fields: [chatMessages.senderId],
+    references: [users.id],
+  }),
+}));
+
 // Zod schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   firstName: true,
@@ -267,6 +290,12 @@ export const insertMaterialSchema = createInsertSchema(materials).pick({
   createdBy: true,
 });
 
+export const insertChatMessageSchema = createInsertSchema(chatMessages).pick({
+  courseId: true,
+  senderId: true,
+  content: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -283,3 +312,5 @@ export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
 export type Material = typeof materials.$inferSelect;
 export type InsertMaterial = z.infer<typeof insertMaterialSchema>;
 export type PlagiarismReport = typeof plagiarismReports.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
