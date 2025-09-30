@@ -5,6 +5,7 @@ import { log } from './vite';
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
   userRole?: 'student' | 'instructor' | 'administrator';
+  subscribedCourses?: Set<string>;
 }
 
 export class WebSocketService {
@@ -16,6 +17,7 @@ export class WebSocketService {
 
     this.wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
       log('WebSocket client connected');
+      ws.subscribedCourses = new Set();
       this.clients.add(ws);
 
       ws.on('message', (message: string) => {
@@ -48,6 +50,18 @@ export class WebSocketService {
         ws.userRole = data.userRole;
         ws.send(JSON.stringify({ type: 'auth_success', userId: data.userId }));
         break;
+      case 'subscribe_course':
+        if (data.courseId && ws.subscribedCourses) {
+          ws.subscribedCourses.add(data.courseId);
+          ws.send(JSON.stringify({ type: 'subscribed', courseId: data.courseId }));
+        }
+        break;
+      case 'unsubscribe_course':
+        if (data.courseId && ws.subscribedCourses) {
+          ws.subscribedCourses.delete(data.courseId);
+          ws.send(JSON.stringify({ type: 'unsubscribed', courseId: data.courseId }));
+        }
+        break;
       case 'ping':
         ws.send(JSON.stringify({ type: 'pong' }));
         break;
@@ -74,12 +88,12 @@ export class WebSocketService {
 
   broadcastToCourse(courseId: string, event: string, data: any) {
     this.broadcast(event, { ...data, courseId }, (ws) => {
-      return true;
+      return ws.subscribedCourses?.has(courseId) || false;
     });
   }
 
   notifyAssignmentUpdate(assignmentId: string, courseId: string, data: any) {
-    this.broadcast('assignment_updated', { assignmentId, courseId, ...data });
+    this.broadcastToCourse(courseId, 'assignment_updated', { assignmentId, ...data });
   }
 
   notifyGradeUpdate(studentId: string, assignmentId: string, data: any) {
@@ -99,7 +113,7 @@ export class WebSocketService {
   }
 
   notifySubmissionCreated(courseId: string, assignmentId: string, submission: any) {
-    this.broadcast('submission_created', { courseId, assignmentId, ...submission });
+    this.broadcastToCourse(courseId, 'submission_created', { assignmentId, ...submission });
   }
 }
 
