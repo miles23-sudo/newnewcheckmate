@@ -618,10 +618,37 @@ export default function AdminDashboard() {
     setSelectedUser(null);
   };
 
-  const handleConfirmDelete = () => {
-    setUsers(users.filter(user => user.id !== selectedUser.id));
-    setIsDeleteDialogOpen(false);
-    setSelectedUser(null);
+  const handleConfirmDelete = async () => {
+    if (!selectedUser) return;
+    
+    try {
+      const response = await fetch(`/api/users/${selectedUser.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete user');
+      }
+
+      // Refresh users list from database
+      await refetchUsers();
+      setIsDeleteDialogOpen(false);
+      setSelectedUser(null);
+      
+      toast({
+        title: "User Deleted",
+        description: "The user has been successfully deleted from the system.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete user. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSystemSettings = () => {
@@ -729,50 +756,144 @@ export default function AdminDashboard() {
     setIsEditCourseModalOpen(true);
   };
 
-  const handleSaveCourse = () => {
-    if (isCreateCourseModalOpen) {
-      const newCourse = {
-        id: (courses.length + 1).toString(),
-        ...courseForm,
-        enrolledStudents: 0,
-        createdDate: new Date().toISOString().split('T')[0],
-        lastModified: new Date().toISOString().split('T')[0]
-      };
-      setCourses([...courses, newCourse]);
-      setIsCreateCourseModalOpen(false);
-    } else if (isEditCourseModalOpen) {
-      setCourses(courses.map(course => 
-        course.id === selectedCourse.id 
-          ? { ...course, ...courseForm, lastModified: new Date().toISOString().split('T')[0] }
-          : course
-      ));
-      setIsEditCourseModalOpen(false);
+  const handleSaveCourse = async () => {
+    try {
+      if (isCreateCourseModalOpen) {
+        // Create new course
+        const response = await fetch('/api/courses', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: courseForm.name,
+            code: courseForm.code,
+            description: courseForm.description,
+            instructorId: courseForm.instructor, // Assuming this is the instructor ID
+            startDate: courseForm.startDate,
+            endDate: courseForm.endDate,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to create course');
+        }
+
+        toast({
+          title: "Course Created",
+          description: "The course has been successfully created.",
+          variant: "default",
+        });
+        setIsCreateCourseModalOpen(false);
+      } else if (isEditCourseModalOpen && selectedCourse) {
+        // Update existing course
+        const response = await fetch(`/api/courses/${selectedCourse.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: courseForm.name,
+            code: courseForm.code,
+            description: courseForm.description,
+            instructorId: courseForm.instructor,
+            startDate: courseForm.startDate,
+            endDate: courseForm.endDate,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update course');
+        }
+
+        toast({
+          title: "Course Updated",
+          description: "The course has been successfully updated.",
+          variant: "default",
+        });
+        setIsEditCourseModalOpen(false);
+      }
+      
+      setCourseForm({
+        name: '',
+        code: '',
+        description: '',
+        instructor: '',
+        maxStudents: 50,
+        startDate: '',
+        endDate: '',
+        status: 'Draft'
+      });
+      setSelectedCourse(null);
+    } catch (error) {
+      console.error('Error saving course:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save course. Please try again.",
+        variant: "destructive",
+      });
     }
-    setCourseForm({
-      name: '',
-      code: '',
-      description: '',
-      instructor: '',
-      maxStudents: 50,
-      startDate: '',
-      endDate: '',
-      status: 'Draft'
-    });
-    setSelectedCourse(null);
   };
 
-  const handleDeleteCourse = (course: any) => {
-    setSelectedCourse(course);
-    // This would open a confirmation dialog
-    setCourses(courses.filter(c => c.id !== course.id));
+  const handleDeleteCourse = async (course: any) => {
+    try {
+      const response = await fetch(`/api/courses/${course.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete course');
+      }
+
+      toast({
+        title: "Course Deleted",
+        description: "The course has been successfully deleted.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error deleting course:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete course. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleArchiveCourse = (course: any) => {
-    setCourses(courses.map(c => 
-      c.id === course.id 
-        ? { ...c, status: 'Archived' }
-        : c
-    ));
+  const handleArchiveCourse = async (course: any) => {
+    try {
+      const response = await fetch(`/api/courses/${course.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...course,
+          status: 'Archived',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to archive course');
+      }
+
+      toast({
+        title: "Course Archived",
+        description: "The course has been successfully archived.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error archiving course:', error);
+      toast({
+        title: "Error",
+        description: "Failed to archive course. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleManageEnrollment = (course: any) => {
