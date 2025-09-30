@@ -6,6 +6,7 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { AuthService } from "./auth";
 import { processSubmissionWithAI, getPlagiarismReport, getAIGrade } from "./ai";
+import { initializeWebSocket, wsService } from "./websocket";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -747,6 +748,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  
+  initializeWebSocket(httpServer);
 
   return httpServer;
 }
