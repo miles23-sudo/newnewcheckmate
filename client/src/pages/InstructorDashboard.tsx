@@ -479,7 +479,7 @@ export default function InstructorDashboard() {
     },
     onSuccess: (newAssignment) => {
       // Refresh assignments list by invalidating queries
-      queryClient.invalidateQueries({ queryKey: ['/api/assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/assignments/instructor'] });
       
       assignmentForm.reset();
       setIsCreateDialogOpen(false);
@@ -525,7 +525,7 @@ export default function InstructorDashboard() {
     },
     onSuccess: (updatedAssignment) => {
       // Refresh assignments list by invalidating queries
-      queryClient.invalidateQueries({ queryKey: ['/api/assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/assignments/instructor'] });
       
       assignmentForm.reset();
       setIsEditDialogOpen(false);
@@ -547,12 +547,20 @@ export default function InstructorDashboard() {
   // Delete assignment mutation
   const deleteAssignmentMutation = useMutation({
     mutationFn: async (id: string) => {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch(`/api/assignments/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete assignment');
+      }
+      
       return id;
     },
     onSuccess: (id) => {
-      setAssignments(prev => prev.filter(assignment => assignment.id !== id));
+      // Refresh assignments list by invalidating queries
+      queryClient.invalidateQueries({ queryKey: ['/api/assignments/instructor'] });
       toast({
         title: "Assignment Deleted",
         description: "Assignment has been deleted successfully.",
@@ -2232,7 +2240,7 @@ export default function InstructorDashboard() {
     <div className="min-h-screen bg-background">
         <div className="border-b">
           <div className="flex h-16 items-center px-4">
-            <div className="flex items-center space-x-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentSection('dashboard')}>
+            <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-white" />
               </div>

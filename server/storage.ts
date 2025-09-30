@@ -214,6 +214,11 @@ export class DatabaseStorage implements IStorage {
     return updatedAssignment || undefined;
   }
 
+  async deleteAssignment(id: string): Promise<boolean> {
+    const result = await db.delete(assignments).where(eq(assignments.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
   // Submission operations
   async getSubmission(id: string): Promise<Submission | undefined> {
     const [submission] = await db.select().from(submissions).where(eq(submissions.id, id));

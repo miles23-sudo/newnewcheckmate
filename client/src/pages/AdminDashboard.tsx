@@ -172,65 +172,29 @@ export default function AdminDashboard() {
   const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
   const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
-  // Course Management state
-  const [courses, setCourses] = useState([
-    {
-      id: "1",
-      name: "Introduction to Computer Science",
-      code: "CS101",
-      status: "Published",
-      instructor: "Dr. Maria Martinez",
-      enrolledStudents: 45,
-      maxStudents: 50,
-      createdDate: "2024-01-15",
-      lastModified: "2024-01-18",
-      startDate: "2024-02-01",
-      endDate: "2024-05-31",
-      description: "Fundamental concepts of computer science and programming"
-    },
-    {
-      id: "2",
-      name: "Data Structures and Algorithms",
-      code: "CS201",
-      status: "Published",
-      instructor: "Dr. John Smith",
-      enrolledStudents: 32,
-      maxStudents: 40,
-      createdDate: "2024-01-10",
-      lastModified: "2024-01-17",
-      startDate: "2024-02-15",
-      endDate: "2024-06-15",
-      description: "Advanced data structures and algorithmic problem solving"
-    },
-    {
-      id: "3",
-      name: "Web Development Fundamentals",
-      code: "CS301",
-      status: "Draft",
-      instructor: "Dr. Sarah Johnson",
-      enrolledStudents: 0,
-      maxStudents: 35,
-      createdDate: "2024-01-20",
-      lastModified: "2024-01-20",
-      startDate: "2024-03-01",
-      endDate: "2024-07-01",
-      description: "Modern web development with HTML, CSS, and JavaScript"
-    },
-    {
-      id: "4",
-      name: "Machine Learning Basics",
-      code: "CS401",
-      status: "Archived",
-      instructor: "Dr. Michael Chen",
-      enrolledStudents: 28,
-      maxStudents: 30,
-      createdDate: "2023-09-01",
-      lastModified: "2023-12-15",
-      startDate: "2023-09-15",
-      endDate: "2023-12-15",
-      description: "Introduction to machine learning concepts and applications"
-    }
-  ]);
+  // Fetch courses from API
+  const { data: apiCourses = [], refetch: refetchCourses } = useQuery({
+    queryKey: ['api', 'courses'],
+    queryFn: () => fetch('/api/courses', { credentials: 'include' }).then(r => r.json()),
+    initialData: [],
+    refetchInterval: 5000, // Auto-refresh courses every 5 seconds
+  });
+
+  // Transform API courses to match UI format
+  const courses = apiCourses.map((course: any) => ({
+    id: course.id,
+    name: course.name,
+    code: course.code,
+    description: course.description,
+    instructor: course.instructorId || 'Unassigned',
+    enrolledStudents: 0, // TODO: Get actual enrollment count
+    maxStudents: 50, // TODO: Get from course data
+    status: 'Published', // TODO: Map from course data
+    createdDate: new Date(course.createdAt).toISOString().split('T')[0],
+    lastModified: new Date(course.updatedAt).toISOString().split('T')[0],
+    startDate: course.startDate ? new Date(course.startDate).toISOString().split('T')[0] : '',
+    endDate: course.endDate ? new Date(course.endDate).toISOString().split('T')[0] : '',
+  }));
 
   const [courseSearchQuery, setCourseSearchQuery] = useState("");
   const [courseStatusFilter, setCourseStatusFilter] = useState("All Status");
@@ -785,6 +749,7 @@ export default function AdminDashboard() {
           description: "The course has been successfully created.",
           variant: "default",
         });
+        await refetchCourses();
         setIsCreateCourseModalOpen(false);
       } else if (isEditCourseModalOpen && selectedCourse) {
         // Update existing course
@@ -813,6 +778,7 @@ export default function AdminDashboard() {
           description: "The course has been successfully updated.",
           variant: "default",
         });
+        await refetchCourses();
         setIsEditCourseModalOpen(false);
       }
       
@@ -848,6 +814,7 @@ export default function AdminDashboard() {
         throw new Error('Failed to delete course');
       }
 
+      await refetchCourses();
       toast({
         title: "Course Deleted",
         description: "The course has been successfully deleted.",
@@ -881,6 +848,7 @@ export default function AdminDashboard() {
         throw new Error('Failed to archive course');
       }
 
+      await refetchCourses();
       toast({
         title: "Course Archived",
         description: "The course has been successfully archived.",
