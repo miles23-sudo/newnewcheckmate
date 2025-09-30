@@ -567,9 +567,14 @@ export default function AdminDashboard() {
 
   const handleSaveUser = () => {
     if (isAddUserModalOpen) {
+      const [firstName, lastName] = userForm.name.split(' ');
       const newUser = {
         id: (users.length + 1).toString(),
         ...userForm,
+        firstName: firstName || '',
+        lastName: lastName || '',
+        originalRole: userForm.role.toLowerCase(),
+        originalStatus: userForm.status.toLowerCase(),
         lastLogin: "Just now"
       };
       setUsers([...users, newUser]);
@@ -2703,7 +2708,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentActivity.slice(0, 4).map((activity) => (
+              {recentActivity.slice(0, 4).map((activity: any) => (
                 <div key={activity.id} className="border-b pb-2 last:border-0">
                   <p className="text-sm font-medium" data-testid={`text-activity-${activity.id}`}>
                     {activity.description}
@@ -2749,7 +2754,7 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-background">
         <div className="border-b">
           <div className="flex h-16 items-center px-4">
-              <div className="flex items-center space-x-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setCurrentSection('dashboard')}>
+              <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <BookOpen className="h-5 w-5 text-white" />
                 </div>
