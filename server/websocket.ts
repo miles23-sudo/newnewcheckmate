@@ -1,11 +1,17 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
+import type { IncomingMessage } from 'http';
 import { log } from './vite';
+import { storage } from './storage';
+import { db } from './db';
+import { enrollments } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
   userRole?: 'student' | 'instructor' | 'administrator';
   subscribedCourses?: Set<string>;
+  allowedCourses?: Set<string>;
 }
 
 export class WebSocketService {
@@ -13,7 +19,15 @@ export class WebSocketService {
   private clients: Set<AuthenticatedWebSocket> = new Set();
 
   constructor(server: Server) {
-    this.wss = new WebSocketServer({ server, path: '/ws' });
+    this.wss = new WebSocketServer({ 
+      server, 
+      path: '/ws',
+      verifyClient: async (info, callback) => {
+        // For now, accept all connections
+        // Session validation will happen after connection via auth message
+        callback(true);
+      }
+    });
 
     this.wss.on('connection', (ws: AuthenticatedWebSocket, req) => {
       log('WebSocket client connected');
@@ -43,17 +57,28 @@ export class WebSocketService {
     log('WebSocket server initialized on /ws');
   }
 
-  private handleMessage(ws: AuthenticatedWebSocket, data: any) {
+  private async handleMessage(ws: AuthenticatedWebSocket, data: any) {
     switch (data.type) {
       case 'auth':
-        ws.userId = data.userId;
-        ws.userRole = data.userRole;
-        ws.send(JSON.stringify({ type: 'auth_success', userId: data.userId }));
+        await this.authenticateSocket(ws, data.userId, data.userRole);
         break;
       case 'subscribe_course':
-        if (data.courseId && ws.subscribedCourses) {
-          ws.subscribedCourses.add(data.courseId);
-          ws.send(JSON.stringify({ type: 'subscribed', courseId: data.courseId }));
+        if (data.courseId && ws.subscribedCourses && ws.allowedCourses) {
+          if (ws.allowedCourses.has(data.courseId)) {
+            ws.subscribedCourses.add(data.courseId);
+            ws.send(JSON.stringify({ type: 'subscribed', courseId: data.courseId }));
+          } else {
+            ws.send(JSON.stringify({ 
+              type: 'error', 
+              message: 'Access denied to course',
+              courseId: data.courseId 
+            }));
+          }
+        } else if (!ws.userId) {
+          ws.send(JSON.stringify({ 
+            type: 'error', 
+            message: 'Authentication required before subscribing to courses' 
+          }));
         }
         break;
       case 'unsubscribe_course':
@@ -67,6 +92,61 @@ export class WebSocketService {
         break;
       default:
         console.log('Unknown message type:', data.type);
+    }
+  }
+
+  private async authenticateSocket(ws: AuthenticatedWebSocket, userId: string, userRole: string) {
+    try {
+      // Verify user exists in database
+      const user = await storage.getUser(userId);
+      
+      if (!user || user.role !== userRole) {
+        ws.send(JSON.stringify({ 
+          type: 'auth_error', 
+          message: 'Invalid user credentials' 
+        }));
+        ws.close();
+        return;
+      }
+
+      ws.userId = userId;
+      ws.userRole = userRole as 'student' | 'instructor' | 'administrator';
+      ws.allowedCourses = new Set();
+
+      // Load user's allowed courses based on role
+      if (userRole === 'student') {
+        const studentEnrollments = await db
+          .select()
+          .from(enrollments)
+          .where(eq(enrollments.studentId, userId));
+        studentEnrollments.forEach((enrollment: { courseId: string }) => {
+          ws.allowedCourses?.add(enrollment.courseId);
+        });
+      } else if (userRole === 'instructor') {
+        const courses = await storage.getCoursesByInstructor(userId);
+        courses.forEach(course => {
+          ws.allowedCourses?.add(course.id);
+        });
+      } else if (userRole === 'administrator') {
+        // Admins have access to all courses
+        const allCourses = await storage.getAllCourses();
+        allCourses.forEach(course => {
+          ws.allowedCourses?.add(course.id);
+        });
+      }
+
+      ws.send(JSON.stringify({ 
+        type: 'auth_success', 
+        userId: userId,
+        allowedCourses: Array.from(ws.allowedCourses)
+      }));
+    } catch (error) {
+      console.error('WebSocket authentication error:', error);
+      ws.send(JSON.stringify({ 
+        type: 'auth_error', 
+        message: 'Authentication failed' 
+      }));
+      ws.close();
     }
   }
 
