@@ -270,6 +270,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await AuthService.login(email, password, role);
       
       if (result.success) {
+        // Save user to session
+        req.session.user = result.user;
+        
         res.json({
           success: true,
           user: result.user,
@@ -315,6 +318,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Logout error:", err);
+          return res.status(500).json({ error: "Failed to logout" });
+        }
+        res.clearCookie('connect.sid');
+        res.json({ success: true, message: "Logged out successfully" });
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+      res.status(500).json({ error: "Failed to logout" });
     }
   });
 

@@ -97,6 +97,11 @@ export default function AdminDashboard() {
   
   // Transform API user data to match UI expectations
   const transformedUsers = React.useMemo(() => {
+    // Check if apiUsers is an array (not an error object)
+    if (!Array.isArray(apiUsers)) {
+      return [];
+    }
+    
     return apiUsers.map((user: any) => ({
       id: user.id,
       name: `${user.firstName} ${user.lastName}`,
