@@ -6,7 +6,6 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { AuthService } from "./auth";
 import { processSubmissionWithAI, getPlagiarismReport, getAIGrade } from "./ai";
-import { initializeWebSocket, wsService } from "./websocket";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // put application routes here
@@ -31,9 +30,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertAnnouncementSchema.parse(req.body);
       const announcement = await storage.createAnnouncement(validatedData);
-      
-      wsService?.notifyAnnouncementCreated(validatedData.courseId, announcement);
-      
       res.status(201).json(announcement);
     } catch (error) {
       console.error("Error creating announcement:", error);
@@ -162,11 +158,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const validatedData = insertSubmissionSchema.parse(req.body);
       const submission = await storage.createSubmission(validatedData);
       
-      const assignment = await storage.getAssignment(submission.assignmentId);
-      if (assignment) {
-        wsService?.notifySubmissionCreated(assignment.courseId, submission.assignmentId, submission);
-      }
-      
       // Process with AI if content is provided
       if (submission.content && submission.assignmentId) {
         try {
@@ -175,11 +166,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             submission.content,
             submission.assignmentId
           );
-          
-          // Notify about grade update if AI grading succeeded
-          if (aiResult && submission.studentId) {
-            wsService?.notifyGradeUpdate(submission.studentId, submission.assignmentId, aiResult);
-          }
           
           // Add AI results to response
           res.status(201).json({
@@ -262,9 +248,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const validatedData = insertChatMessageSchema.parse(req.body);
       const message = await storage.createChatMessage(validatedData);
-      
-      wsService?.notifyChatMessage(validatedData.courseId, message);
-      
       res.status(201).json(message);
     } catch (error) {
       console.error("Error creating chat message:", error);
@@ -439,9 +422,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/assignments", async (req, res) => {
     try {
       const assignment = await storage.createAssignment(req.body);
-      
-      wsService?.notifyAssignmentUpdate(assignment.id, assignment.courseId, assignment);
-      
       res.status(201).json(assignment);
     } catch (error) {
       console.error("Error creating assignment:", error);
@@ -767,8 +747,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
-  
-  initializeWebSocket(httpServer);
 
   return httpServer;
 }

@@ -83,6 +83,17 @@ Preferred communication style: Simple, everyday language.
 
 # Recent Changes
 
+## Real-Time Data Updates Implementation (September 2024)
+- **Auto-Refresh Polling**: Implemented automatic data refresh every 5 seconds across all dashboards using TanStack Query's `refetchInterval` option
+  - **Student Dashboard**: Auto-refreshes courses, chat messages, announcements, assignments, and grades
+  - **Instructor Dashboard**: Auto-refreshes teaching courses, course stats, assignments, and recent submissions
+  - **Admin Dashboard**: Auto-refreshes users, pending registrations, and system statistics
+- **Architecture Decision**: Chose polling-based auto-refresh over WebSocket implementation for security and simplicity
+  - Polling provides adequate real-time experience for LMS use case (5-second intervals)
+  - Avoids complexity of WebSocket session validation and authentication
+  - More reliable and easier to maintain than WebSocket connections
+- **Future Consideration**: WebSocket implementation documented for future enhancement when session-based authentication can be properly integrated
+
 ## Settings Functionality Implementation (December 2024)
 - **API Endpoints**: Created comprehensive API endpoints for saving user profile and settings data:
   - `/api/users/:id/profile` - For updating user profile information
