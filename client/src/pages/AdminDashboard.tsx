@@ -83,14 +83,16 @@ export default function AdminDashboard() {
   const { data: apiUsers = [], refetch: refetchUsers } = useQuery({
     queryKey: ['api', 'users'],
     queryFn: () => fetch('/api/users', { credentials: 'include' }).then(r => r.json()),
-    initialData: []
+    initialData: [],
+    refetchInterval: 5000, // Auto-refresh users every 5 seconds
   });
 
   // Fetch pending registrations from API
   const { data: pendingUsers = [], refetch: refetchPendingUsers } = useQuery({
     queryKey: ['api', 'admin', 'pending-registrations'],
     queryFn: () => fetch('/api/admin/pending-registrations', { credentials: 'include' }).then(r => r.json()),
-    initialData: []
+    initialData: [],
+    refetchInterval: 5000, // Auto-refresh pending registrations every 5 seconds
   });
   
   // Transform API user data to match UI expectations
@@ -771,6 +773,7 @@ export default function AdminDashboard() {
       totalAssignments: 87,
       aiGradingUsage: 92.5,
     },
+    refetchInterval: 5000, // Auto-refresh system stats every 5 seconds
   });
 
   const { data: recentActivity = [] } = useQuery({

@@ -932,6 +932,7 @@ export default function InstructorDashboard() {
     queryKey: ['/api/courses/instructor', mockInstructor.id],
     queryFn: () => apiGet(`/api/courses/instructor/${mockInstructor.id}`),
     enabled: true,
+    refetchInterval: 5000, // Auto-refresh courses every 5 seconds
   });
 
   // Fetch course statistics (enrollments, assignments, pending grades)
@@ -958,6 +959,7 @@ export default function InstructorDashboard() {
       return stats;
     },
     enabled: teachingCourses.length > 0,
+    refetchInterval: 5000, // Auto-refresh course stats every 5 seconds
   });
 
   // Fetch assignments for all courses
@@ -980,6 +982,7 @@ export default function InstructorDashboard() {
       return assignments;
     },
     enabled: teachingCourses.length > 0,
+    refetchInterval: 5000, // Auto-refresh assignments every 5 seconds
   });
 
   // Fetch recent submissions
@@ -1073,6 +1076,7 @@ export default function InstructorDashboard() {
       return submissions.sort((a, b) => new Date(b.submittedAt || b.createdAt).getTime() - new Date(a.submittedAt || a.createdAt).getTime()).slice(0, 10);
     },
     enabled: true, // Always enabled to show sample data
+    refetchInterval: 5000, // Auto-refresh submissions every 5 seconds
   });
 
   const renderAssignments = () => {

@@ -84,11 +84,12 @@ export default function StudentDashboard() {
   const { user, logout } = useUser();
   const { toast } = useToast();
 
-  // Query to fetch student's enrolled courses
+  // Query to fetch student's enrolled courses with auto-refresh every 5 seconds
   const { data: enrolledCourses = [], isLoading: isCoursesLoading } = useQuery({
     queryKey: ['/api/courses/student', user?.id],
     queryFn: () => fetch(`/api/courses/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!user?.id,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
   
   // Initialize tab from URL hash, localStorage, or default to 'overview'
@@ -161,6 +162,7 @@ export default function StudentDashboard() {
     queryKey: ['/api/chat/course', selectedCourseId],
     queryFn: () => fetch(`/api/chat/course/${selectedCourseId}`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!selectedCourseId,
+    refetchInterval: 5000, // Auto-refresh chat messages every 5 seconds
   });
 
   // Query to fetch announcements for notification generation
@@ -175,6 +177,7 @@ export default function StudentDashboard() {
       return results.flat();
     },
     enabled: !!enrolledCourses.length,
+    refetchInterval: 5000, // Auto-refresh announcements every 5 seconds
   });
 
   // Query to fetch assignments for notification generation
@@ -189,6 +192,7 @@ export default function StudentDashboard() {
       return results.flat();
     },
     enabled: !!enrolledCourses.length,
+    refetchInterval: 5000, // Auto-refresh assignments every 5 seconds
   });
 
   // Settings state management
@@ -783,6 +787,7 @@ export default function StudentDashboard() {
     queryKey: ['/api/grades/student', user?.id],
     queryFn: () => fetch(`/api/grades/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
     enabled: !!user?.id,
+    refetchInterval: 5000, // Auto-refresh grades every 5 seconds
   });
 
   // Calculate course grades by grouping submissions
