@@ -565,7 +565,7 @@ export default function AdminDashboard() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (isAddUserModalOpen) {
       const [firstName, lastName] = userForm.name.split(' ');
       const newUser = {
@@ -579,13 +579,34 @@ export default function AdminDashboard() {
       };
       setUsers([...users, newUser]);
       setIsAddUserModalOpen(false);
-    } else if (isEditUserModalOpen) {
-      setUsers(users.map(user => 
-        user.id === selectedUser.id 
-          ? { ...user, ...userForm }
-          : user
-      ));
-      setIsEditUserModalOpen(false);
+    } else if (isEditUserModalOpen && selectedUser) {
+      try {
+        // Convert frontend status to database status
+        const dbStatus = userForm.status === 'Active' ? 'approved' : 
+                        userForm.status === 'Inactive' ? 'rejected' : 
+                        userForm.status === 'Pending' ? 'pending' : 'approved';
+        
+        // Update user in database
+        const response = await fetch(`/api/admin/users/${selectedUser.id}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ status: dbStatus }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update user');
+        }
+
+        // Refresh users list from database
+        await refetchUsers();
+        setIsEditUserModalOpen(false);
+      } catch (error) {
+        console.error('Error updating user:', error);
+        alert('Failed to update user. Please try again.');
+      }
     }
     setUserForm({
       name: '',
