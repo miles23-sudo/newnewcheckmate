@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@/contexts/UserContext";
 import { useQuery } from "@tanstack/react-query";
@@ -68,6 +68,25 @@ const mockUsers = [
   }
 ];
 
+// Helper function to format time ago
+const getTimeAgo = (date: Date): string => {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diffInSeconds < 60) {
+    return `${diffInSeconds} seconds ago`;
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60);
+    return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600);
+    return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  } else {
+    const days = Math.floor(diffInSeconds / 86400);
+    return `${days} day${days !== 1 ? 's' : ''} ago`;
+  }
+};
+
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { user, logout } = useUser();
@@ -78,6 +97,24 @@ export default function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'pending' | 'permissions' | 'detection' | 'logs'>('users');
+  
+  // System logs state
+  const [logs, setLogs] = useState([]);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logsRefreshing, setLogsRefreshing] = useState(false); // For background refresh
+  const [logsFilters, setLogsFilters] = useState({ level: 'all', search: '' });
+  const [logsPagination, setLogsPagination] = useState({ page: 1, limit: 50, total: 0 });
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+
+  // Instructors state
+  const [instructors, setInstructors] = useState([]);
+  const [instructorsLoading, setInstructorsLoading] = useState(false);
+
+  // Activity logs state
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+  const [activityLogsSearch, setActivityLogsSearch] = useState('');
+  const [activityLogsFilter, setActivityLogsFilter] = useState('all');
   
   // Fetch users from API
   const { data: apiUsers = [], refetch: refetchUsers } = useQuery({
@@ -116,6 +153,150 @@ export default function AdminDashboard() {
       originalStatus: user.status
     }));
   }, [apiUsers]);
+
+  // Fetch system logs
+  const fetchLogs = useCallback(async (page = logsPagination.page, level = logsFilters.level, isBackgroundRefresh = false) => {
+    try {
+      if (isBackgroundRefresh) {
+        setLogsRefreshing(true);
+      } else {
+        setLogsLoading(true);
+      }
+      
+      const params = new URLSearchParams({
+        limit: logsPagination.limit.toString(),
+        offset: ((page - 1) * logsPagination.limit).toString(),
+        ...(level !== 'all' && { level: level })
+      });
+
+      const response = await fetch(`/api/admin/logs?${params}`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      
+      setLogs(data.logs || []);
+      setLogsPagination(prev => ({ ...prev, total: data.totalCount || 0 }));
+      setLastRefreshTime(new Date());
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+    } finally {
+      if (isBackgroundRefresh) {
+        setLogsRefreshing(false);
+      } else {
+        setLogsLoading(false);
+      }
+    }
+  }, [logsPagination.limit]);
+
+  // Auto-refresh logs when tab changes
+  useEffect(() => {
+    if (activeAdminTab === 'logs') {
+      fetchLogs();
+      const interval = setInterval(() => {
+        fetchLogs(logsPagination.page, logsFilters.level, true); // Background refresh
+      }, 10000); // Increased to 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [activeAdminTab, logsPagination.page, logsFilters.level, fetchLogs]);
+
+  // Fetch logs when pagination or filters change
+  useEffect(() => {
+    if (activeAdminTab === 'logs') {
+      fetchLogs(logsPagination.page, logsFilters.level);
+    }
+  }, [logsPagination.page, logsFilters.level, activeAdminTab, fetchLogs]);
+
+  // Fetch instructors on component mount
+  useEffect(() => {
+    fetchInstructors();
+  }, []);
+
+  // Manual refresh function
+  const handleRefreshLogs = () => {
+    fetchLogs(logsPagination.page, logsFilters.level);
+  };
+
+  // Fetch instructors
+  const fetchInstructors = async () => {
+    try {
+      setInstructorsLoading(true);
+      const response = await fetch('/api/instructors', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      setInstructors(data);
+    } catch (error) {
+      console.error('Error fetching instructors:', error);
+    } finally {
+      setInstructorsLoading(false);
+    }
+  };
+
+  // Helper function to get instructor name from ID
+  const getInstructorName = (instructorId: string) => {
+    const instructor = instructors.find((inst: any) => inst.id === instructorId) as any;
+    return instructor ? `${instructor.firstName} ${instructor.lastName}` : 'Unassigned';
+  };
+
+  // Fetch and format activity logs
+  const fetchActivityLogs = async () => {
+    try {
+      setActivityLogsLoading(true);
+      const response = await fetch('/api/admin/logs', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      
+      // Format logs for activity display
+      const formattedLogs = data.logs.map((log: any) => ({
+        id: log.id,
+        timestamp: new Date(log.createdAt).toLocaleString(),
+        action: getActionFromLog(log),
+        user: log.userId ? getInstructorName(log.userId) : 'System',
+        details: log.message,
+        level: log.level,
+        source: log.source
+      }));
+      
+      setActivityLogs(formattedLogs);
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+    } finally {
+      setActivityLogsLoading(false);
+    }
+  };
+
+  // Helper function to get action from log
+  const getActionFromLog = (log: any) => {
+    if (log.source === 'User Management') {
+      if (log.message.includes('created')) return 'User Registration';
+      if (log.message.includes('deleted')) return 'User Deletion';
+      if (log.message.includes('logged in')) return 'User Login';
+      if (log.message.includes('logged out')) return 'User Logout';
+    }
+    if (log.source === 'Authentication') {
+      if (log.message.includes('logged in')) return 'User Login';
+      if (log.message.includes('logged out')) return 'User Logout';
+      if (log.message.includes('Failed login')) return 'Failed Login';
+    }
+    return log.source;
+  };
+
+
+  // Filter activity logs based on search and filter
+  const filteredActivityLogs = activityLogs.filter((log: any) => {
+    const matchesSearch = log.details.toLowerCase().includes(activityLogsSearch.toLowerCase()) ||
+                         log.user.toLowerCase().includes(activityLogsSearch.toLowerCase()) ||
+                         log.action.toLowerCase().includes(activityLogsSearch.toLowerCase());
+    
+    const matchesFilter = activityLogsFilter === 'all' || 
+                         (activityLogsFilter === 'registration' && log.action.includes('Registration')) ||
+                         (activityLogsFilter === 'login' && log.action.includes('Login')) ||
+                         (activityLogsFilter === 'deletion' && log.action.includes('Deletion')) ||
+                         (activityLogsFilter === 'system' && log.action.includes('System'));
+    
+    return matchesSearch && matchesFilter;
+  });
   
   // User Management states
   const [users, setUsers] = useState(transformedUsers);
@@ -133,10 +314,12 @@ export default function AdminDashboard() {
   
   // Form states
   const [userForm, setUserForm] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
-    role: 'Student',
-    status: 'Active',
+    password: '',
+    role: 'Professor' as 'Professor', // Only allow instructor registration
+    status: 'Active' as 'Active' | 'Inactive' | 'Pending',
     plagiarismFlags: 0
   });
 
@@ -147,33 +330,30 @@ export default function AdminDashboard() {
     email: user?.email || '',
     department: "Administration",
     title: "System Administrator",
-    bio: "Experienced administrator managing the CHECKmate learning management system.",
     language: "en"
   });
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    userRegistrations: true,
-    systemAlerts: true,
-    securityAlerts: true,
-    weeklyReports: true,
-    pushNotifications: true
-  });
+  // Update profile settings when user data changes
+  useEffect(() => {
+    if (user) {
+      setProfileSettings({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        department: "Administration",
+        title: "System Administrator",
+        language: "en"
+      });
+    }
+  }, [user]);
 
-  const [privacySettings, setPrivacySettings] = useState({
-    profileVisibility: "public",
-    showEmail: true,
-    showActivity: false,
-    allowMessages: true
-  });
+
 
   // Loading states for settings save operations
   const [isProfileSaving, setIsProfileSaving] = useState(false);
-  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
-  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
   // Fetch courses from API
-  const { data: apiCourses = [], refetch: refetchCourses } = useQuery({
+  const { data: apiCourses = [], refetch: rerefetchCourses } = useQuery({
     queryKey: ['api', 'courses'],
     queryFn: () => fetch('/api/courses', { credentials: 'include' }).then(r => r.json()),
     initialData: [],
@@ -181,20 +361,20 @@ export default function AdminDashboard() {
   });
 
   // Transform API courses to match UI format
-  const courses = apiCourses.map((course: any) => ({
-    id: course.id,
-    name: course.name,
-    code: course.code,
-    description: course.description,
-    instructor: course.instructorId || 'Unassigned',
-    enrolledStudents: 0, // TODO: Get actual enrollment count
-    maxStudents: 50, // TODO: Get from course data
-    status: 'Published', // TODO: Map from course data
-    createdDate: new Date(course.createdAt).toISOString().split('T')[0],
-    lastModified: new Date(course.updatedAt).toISOString().split('T')[0],
-    startDate: course.startDate ? new Date(course.startDate).toISOString().split('T')[0] : '',
-    endDate: course.endDate ? new Date(course.endDate).toISOString().split('T')[0] : '',
-  }));
+        const courses = apiCourses.map((course: any) => ({
+          id: course.id,
+          name: course.title || course.name,
+          code: course.code,
+          description: course.description,
+          instructor: course.instructorId || course.instructor || '',
+          enrolledStudents: course.enrolledStudents || 0,
+          maxStudents: 50, // TODO: Get from course data
+          status: course.isActive ? 'Published' : 'Archived', // Map from database isActive field
+          createdDate: new Date(course.createdAt).toISOString().split('T')[0],
+          lastModified: new Date(course.updatedAt).toISOString().split('T')[0],
+          startDate: course.startDate ? new Date(course.startDate).toISOString().split('T')[0] : '',
+          endDate: course.endDate ? new Date(course.endDate).toISOString().split('T')[0] : '',
+        }));
 
   const [courseSearchQuery, setCourseSearchQuery] = useState("");
   const [courseStatusFilter, setCourseStatusFilter] = useState("All Status");
@@ -205,8 +385,9 @@ export default function AdminDashboard() {
   const [courseForm, setCourseForm] = useState({
     name: '',
     code: '',
+    section: 'A',
     description: '',
-    instructor: '',
+    instructor: '', // This will now store the instructor ID
     maxStudents: 50,
     startDate: '',
     endDate: '',
@@ -217,118 +398,143 @@ export default function AdminDashboard() {
   const [selectedReportType, setSelectedReportType] = useState<'overview' | 'course' | 'student' | 'activity'>('overview');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [courseReport, setCourseReport] = useState<any>(null);
+  const [courseReportLoading, setCourseReportLoading] = useState(false);
+  
+  // Enrollment state
+  const [enrolledStudents, setEnrolledStudents] = useState<any[]>([]);
+  const [availableStudents, setAvailableStudents] = useState<any[]>([]);
+  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
 
-  // Mock reporting data
-  const [courseReports] = useState([
-    {
-      courseId: "1",
-      courseName: "Introduction to Computer Science",
-      courseCode: "CS101",
-      enrollmentRate: 90,
-      completionRate: 78,
-      averageGrade: 85.2,
-      totalStudents: 45,
-      completedStudents: 35,
-      averageTimeSpent: 42.5,
-      engagementScore: 8.2,
-      quizAverage: 82.1,
-      assignmentAverage: 88.3,
-      discussionPosts: 156,
-      lastActivity: "2024-01-18"
-    },
-    {
-      courseId: "2",
-      courseName: "Data Structures and Algorithms",
-      courseCode: "CS201",
-      enrollmentRate: 80,
-      completionRate: 65,
-      averageGrade: 79.8,
-      totalStudents: 32,
-      completedStudents: 21,
-      averageTimeSpent: 38.2,
-      engagementScore: 7.5,
-      quizAverage: 76.4,
-      assignmentAverage: 83.1,
-      discussionPosts: 98,
-      lastActivity: "2024-01-17"
+  // Fetch course report when course is selected
+  const fetchCourseReport = async (courseId: string) => {
+    if (!courseId) return;
+    
+    try {
+      setCourseReportLoading(true);
+      const response = await fetch(`/api/admin/course-reports/${courseId}`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      setCourseReport(data);
+    } catch (error) {
+      console.error('Error fetching course report:', error);
+    } finally {
+      setCourseReportLoading(false);
     }
-  ]);
+  };
 
-  const [studentProgress] = useState([
-    {
-      studentId: "1",
-      studentName: "John Doe",
-      courseId: "1",
-      courseName: "Introduction to Computer Science",
-      modulesCompleted: 8,
-      totalModules: 12,
-      progressPercentage: 67,
-      currentGrade: 88.5,
-      timeSpent: 45.2,
-      lastActivity: "2024-01-18",
-      assignmentsSubmitted: 6,
-      quizzesCompleted: 4,
-      discussionPosts: 12
-    },
-    {
-      studentId: "2",
-      studentName: "Jane Smith",
-      courseId: "1",
-      courseName: "Introduction to Computer Science",
-      modulesCompleted: 12,
-      totalModules: 12,
-      progressPercentage: 100,
-      currentGrade: 92.3,
-      timeSpent: 52.8,
-      lastActivity: "2024-01-18",
-      assignmentsSubmitted: 8,
-      quizzesCompleted: 6,
-      discussionPosts: 18
+  // Fetch enrolled students for a course
+  const fetchEnrolledStudents = async (courseId: string) => {
+    try {
+      console.log('Fetching enrolled students for course:', courseId);
+      const response = await fetch(`/api/courses/${courseId}/enrollments`, {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      console.log('Enrolled students response:', data);
+      setEnrolledStudents(data);
+    } catch (error) {
+      console.error('Error fetching enrolled students:', error);
     }
-  ]);
+  };
 
-  const [activityLogs] = useState([
-    {
-      id: "1",
-      timestamp: "2024-01-18 14:30:25",
-      action: "Student Enrollment",
-      user: "John Doe",
-      course: "CS101 - Introduction to Computer Science",
-      details: "Student enrolled in course"
-    },
-    {
-      id: "2",
-      timestamp: "2024-01-18 14:25:12",
-      action: "Assignment Submission",
-      user: "Jane Smith",
-      course: "CS101 - Introduction to Computer Science",
-      details: "Submitted assignment: Programming Basics"
-    },
-    {
-      id: "3",
-      timestamp: "2024-01-18 14:20:45",
-      action: "Quiz Completion",
-      user: "Mike Johnson",
-      course: "CS201 - Data Structures and Algorithms",
-      details: "Completed quiz: Arrays and Linked Lists (Score: 85%)"
-    },
-    {
-      id: "4",
-      timestamp: "2024-01-18 14:15:33",
-      action: "Content Update",
-      user: "Dr. Maria Martinez",
-      course: "CS101 - Introduction to Computer Science",
-      details: "Updated module 3: Variables and Data Types"
-    },
-    {
-      id: "5",
-      timestamp: "2024-01-18 14:10:18",
-      action: "Discussion Post",
-      user: "Sarah Wilson",
-      course: "CS201 - Data Structures and Algorithms",
-      details: "Posted in discussion: Algorithm Complexity"
+  // Fetch available students (not enrolled in this course)
+  const fetchAvailableStudents = async () => {
+    try {
+      const response = await fetch('/api/users', {
+        credentials: 'include'
+      });
+      const data = await response.json();
+      const students = data.filter((user: any) => user.role === 'Student' || user.role === 'student');
+      setAvailableStudents(students);
+    } catch (error) {
+      console.error('Error fetching available students:', error);
     }
-  ]);
+  };
+
+  // Enroll students in course
+  const enrollStudents = async (courseId: string, studentIds: string[]) => {
+    try {
+      setEnrollmentLoading(true);
+      console.log('Enrolling students:', { courseId, studentIds });
+      
+      const response = await fetch(`/api/courses/${courseId}/enroll`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ studentIds })
+      });
+      
+      const data = await response.json();
+      console.log('Enrollment response:', data);
+      
+      if (response.ok && (data.success || data.enrollments?.length > 0 || data.alreadyEnrolled?.length > 0)) {
+        // Refresh enrolled students and courses list
+        await Promise.all([
+          fetchEnrolledStudents(courseId),
+          rerefetchCourses()
+        ]);
+        setSelectedStudents([]);
+        toast({ title: "Success", description: data.message || 'Students enrolled successfully' });
+      } else {
+        toast({ title: "Error", description: data.error || data.message || 'Failed to enroll students', variant: "destructive" });
+      }
+    } catch (error) {
+      console.error('Error enrolling students:', error);
+      toast({ title: "Error", description: 'Failed to enroll students', variant: "destructive" });
+    } finally {
+      setEnrollmentLoading(false);
+    }
+  };
+
+  // Unenroll student from course
+  const unenrollStudent = async (courseId: string, studentId: string) => {
+    try {
+      const response = await fetch(`/api/courses/${courseId}/enroll/${studentId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      
+      const data = await response.json();
+      if (response.ok && data.success) {
+        // Refresh enrolled students and courses list
+        await Promise.all([
+          fetchEnrolledStudents(courseId),
+          rerefetchCourses()
+        ]);
+        toast({ title: "Success", description: data.message || 'Student unenrolled successfully' });
+      } else {
+        toast({ title: "Error", description: data.error || data.message || 'Failed to unenroll student', variant: "destructive" });
+      }
+    } catch (error) {
+      console.error('Error unenrolling student:', error);
+      toast({ title: "Error", description: 'Failed to unenroll student', variant: "destructive" });
+    }
+  };
+
+  // Fetch activity logs when activity tab is selected
+  useEffect(() => {
+    if (selectedReportType === 'activity') {
+      fetchActivityLogs();
+    }
+  }, [selectedReportType]);
+
+  // Fetch course report when course is selected
+  useEffect(() => {
+    if (selectedCourseId) {
+      fetchCourseReport(selectedCourseId);
+    }
+  }, [selectedCourseId]);
+
+  // Mock reporting data - removed, now using real data
+  const courseReports: any[] = [];
+  const studentProgress: any[] = [];
+
 
   // Notification state
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -430,83 +636,18 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSaveNotifications = async () => {
-    if (!user?.id) return;
-    
-    setIsNotificationsSaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
-      });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Notification Settings Updated",
-          description: "Your notification preferences have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save notification settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsNotificationsSaving(false);
-    }
-  };
-
-  const handleSavePrivacy = async () => {
-    if (!user?.id) return;
-    
-    setIsPrivacySaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Privacy Settings Updated",
-          description: "Your privacy settings have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save privacy settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsPrivacySaving(false);
-    }
-  };
 
   // User Management handlers
+
   const handleAddUser = () => {
     setUserForm({
-      name: '',
+      firstName: '',
+      lastName: '',
       email: '',
-      role: 'Student',
-      status: 'Active',
+      password: '',
+      role: 'Professor' as 'Professor',
+      status: 'Active' as 'Active' | 'Inactive' | 'Pending',
       plagiarismFlags: 0
     });
     setIsAddUserModalOpen(true);
@@ -515,11 +656,13 @@ export default function AdminDashboard() {
   const handleEditUser = (user: any) => {
     setSelectedUser(user);
     setUserForm({
-      name: user.name,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
       email: user.email,
-      role: user.role,
-      status: user.status,
-      plagiarismFlags: user.plagiarismFlags
+      password: '', // Not needed for editing
+      role: 'Professor' as 'Professor', // Fixed type
+      status: user.status as 'Active' | 'Inactive' | 'Pending', // Fixed type
+      plagiarismFlags: user.plagiarismFlags || 0
     });
     setIsEditUserModalOpen(true);
   };
@@ -531,18 +674,59 @@ export default function AdminDashboard() {
 
   const handleSaveUser = async () => {
     if (isAddUserModalOpen) {
-      const [firstName, lastName] = userForm.name.split(' ');
-      const newUser = {
-        id: (users.length + 1).toString(),
-        ...userForm,
-        firstName: firstName || '',
-        lastName: lastName || '',
-        originalRole: userForm.role.toLowerCase(),
-        originalStatus: userForm.status.toLowerCase(),
-        lastLogin: "Just now"
-      };
-      setUsers([...users, newUser]);
-      setIsAddUserModalOpen(false);
+      try {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            firstName: userForm.firstName,
+            lastName: userForm.lastName,
+            email: userForm.email,
+            password: userForm.password,
+            confirmPassword: userForm.password, // Required by registration schema
+            role: 'instructor', // Always instructor for admin-created accounts
+            studentId: null // Not needed for instructors
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          // Set status if not Active (approved by default)
+          if (userForm.status !== 'Active') {
+            const dbStatus = userForm.status === 'Inactive' ? 'rejected' : 'pending';
+            await fetch(`/api/admin/users/${result.user.id}/status`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'include',
+              body: JSON.stringify({ status: dbStatus })
+            });
+          }
+
+          await refetchUsers();
+          setIsAddUserModalOpen(false);
+
+          toast({
+            title: "Instructor Created",
+            description: "The instructor account has been successfully created.",
+            variant: "default",
+          });
+        } else {
+          throw new Error(result.error || 'Failed to create instructor');
+        }
+      } catch (error) {
+        console.error('Error creating instructor:', error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to create instructor. Please try again.",
+          variant: "destructive",
+        });
+      }
     } else if (isEditUserModalOpen && selectedUser) {
       try {
         // Convert frontend status to database status
@@ -573,10 +757,12 @@ export default function AdminDashboard() {
       }
     }
     setUserForm({
-      name: '',
+      firstName: '',
+      lastName: '',
       email: '',
-      role: 'Student',
-      status: 'Active',
+      password: '',
+      role: 'Professor' as 'Professor',
+      status: 'Active' as 'Active' | 'Inactive' | 'Pending',
       plagiarismFlags: 0
     });
     setSelectedUser(null);
@@ -591,8 +777,10 @@ export default function AdminDashboard() {
         credentials: 'include',
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to delete user');
+        throw new Error(result.details || result.error || 'Failed to delete user');
       }
 
       // Refresh users list from database
@@ -608,8 +796,8 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Error deleting user:', error);
       toast({
-        title: "Error",
-        description: "Failed to delete user. Please try again.",
+        title: "Cannot Delete User",
+        description: error instanceof Error ? error.message : "Failed to delete user. Please try again.",
         variant: "destructive",
       });
     }
@@ -695,6 +883,7 @@ export default function AdminDashboard() {
     setCourseForm({
       name: '',
       code: '',
+      section: 'A',
       description: '',
       instructor: '',
       maxStudents: 50,
@@ -708,10 +897,11 @@ export default function AdminDashboard() {
   const handleEditCourse = (course: any) => {
     setSelectedCourse(course);
     setCourseForm({
-      name: course.name,
+      name: course.name || course.title,
       code: course.code,
+      section: course.section || 'A',
       description: course.description,
-      instructor: course.instructor,
+      instructor: course.instructorId || course.instructor, // Handle both ID and name
       maxStudents: course.maxStudents,
       startDate: course.startDate,
       endDate: course.endDate,
@@ -733,6 +923,7 @@ export default function AdminDashboard() {
           body: JSON.stringify({
             name: courseForm.name,
             code: courseForm.code,
+            section: courseForm.section,
             description: courseForm.description,
             instructorId: courseForm.instructor, // Assuming this is the instructor ID
             startDate: courseForm.startDate,
@@ -749,7 +940,7 @@ export default function AdminDashboard() {
           description: "The course has been successfully created.",
           variant: "default",
         });
-        await refetchCourses();
+        await rerefetchCourses();
         setIsCreateCourseModalOpen(false);
       } else if (isEditCourseModalOpen && selectedCourse) {
         // Update existing course
@@ -778,13 +969,14 @@ export default function AdminDashboard() {
           description: "The course has been successfully updated.",
           variant: "default",
         });
-        await refetchCourses();
+        await rerefetchCourses();
         setIsEditCourseModalOpen(false);
       }
       
       setCourseForm({
         name: '',
         code: '',
+        section: 'A',
         description: '',
         instructor: '',
         maxStudents: 50,
@@ -814,7 +1006,7 @@ export default function AdminDashboard() {
         throw new Error('Failed to delete course');
       }
 
-      await refetchCourses();
+      await rerefetchCourses();
       toast({
         title: "Course Deleted",
         description: "The course has been successfully deleted.",
@@ -839,8 +1031,7 @@ export default function AdminDashboard() {
         },
         credentials: 'include',
         body: JSON.stringify({
-          ...course,
-          status: 'Archived',
+          isActive: false, // Set to false to archive the course
         }),
       });
 
@@ -848,7 +1039,7 @@ export default function AdminDashboard() {
         throw new Error('Failed to archive course');
       }
 
-      await refetchCourses();
+      await rerefetchCourses();
       toast({
         title: "Course Archived",
         description: "The course has been successfully archived.",
@@ -864,16 +1055,59 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleManageEnrollment = (course: any) => {
+  const handleUnarchiveCourse = async (course: any) => {
+    try {
+      const response = await fetch(`/api/courses/${course.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          isActive: true, // Set to true to unarchive the course
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to unarchive course');
+      }
+
+      await rerefetchCourses();
+      toast({
+        title: "Course Unarchived",
+        description: "The course has been successfully unarchived.",
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error unarchiving course:', error);
+      toast({
+        title: "Error",
+        description: "Failed to unarchive course. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleManageEnrollment = async (course: any) => {
+    console.log('Opening enrollment modal for course:', course);
     setSelectedCourse(course);
     setIsEnrollmentModalOpen(true);
+    // Fetch enrolled students and available students
+    await Promise.all([
+      fetchEnrolledStudents(course.id),
+      fetchAvailableStudents()
+    ]);
   };
 
   // Filter courses based on search and filters
-  const filteredCourses = courses.filter(course => {
-    const matchesSearch = course.name.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
-                         course.code.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
-                         course.instructor.toLowerCase().includes(courseSearchQuery.toLowerCase());
+  const filteredCourses = courses.filter((course: any) => {
+    const courseName = course.name || course.title || '';
+    const courseCode = course.code || '';
+    const instructorName = getInstructorName(course.instructorId || course.instructor) || '';
+    
+    const matchesSearch = courseName.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
+                         courseCode.toLowerCase().includes(courseSearchQuery.toLowerCase()) ||
+                         instructorName.toLowerCase().includes(courseSearchQuery.toLowerCase());
     const matchesStatus = courseStatusFilter === "All Status" || course.status === courseStatusFilter;
     
     return matchesSearch && matchesStatus;
@@ -896,32 +1130,11 @@ export default function AdminDashboard() {
     refetchInterval: 5000, // Auto-refresh system stats every 5 seconds
   });
 
-  const { data: recentActivity = [] } = useQuery({
+  const { data: recentActivity = [], isLoading: isActivityLoading } = useQuery({
     queryKey: ['api', 'admin', 'activity'],
-    queryFn: () => fetch('/api/admin/activity', { credentials: 'include' }).then(r => r.json()),
-    initialData: [
-      {
-        id: "1",
-        type: "user_registration",
-        description: "New student registered: Sarah Johnson",
-        timestamp: "2024-09-18 14:30",
-        status: "completed",
-      },
-      {
-        id: "2",
-        type: "course_creation",
-        description: "Course created: Advanced Physics by Dr. Chen",
-        timestamp: "2024-09-18 13:15",
-        status: "completed",
-      },
-      {
-        id: "3",
-        type: "ai_grading",
-        description: "AI graded 25 assignments in CS101",
-        timestamp: "2024-09-18 12:45",
-        status: "completed",
-      },
-    ],
+    queryFn: () => fetch('/api/admin/activity?limit=10', { credentials: 'include' }).then(r => r.json()),
+    refetchInterval: 3000, // Auto-refresh activity every 3 seconds for real-time updates
+    refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
   });
 
   // Filter users based on search and filters
@@ -943,10 +1156,6 @@ export default function AdminDashboard() {
           <Button variant="outline" data-testid="button-system-settings" onClick={handleSystemSettings}>
             <Settings className="mr-2 h-4 w-4" />
             System Settings
-          </Button>
-          <Button data-testid="button-add-user" onClick={handleAddUser}>
-            <User className="mr-2 h-4 w-4" />
-            Add New User
           </Button>
         </div>
       </div>
@@ -1032,6 +1241,14 @@ export default function AdminDashboard() {
             <SelectItem value="Inactive">Inactive</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Add User Button */}
+      <div className="flex justify-end">
+        <Button onClick={handleAddUser} className="mb-4">
+          <UserPlus className="mr-2 h-4 w-4" />
+          Add Instructor
+        </Button>
       </div>
 
       {/* User Table */}
@@ -1314,7 +1531,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Permissions Content */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Role Permissions</CardTitle>
@@ -1355,44 +1572,6 @@ export default function AdminDashboard() {
                 <p>• System configuration</p>
                 <p>• Access all data</p>
                 <p>• Security controls</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Access Controls</CardTitle>
-            <CardDescription>Configure system-wide access settings</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Require 2FA</span>
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="2fa" defaultChecked />
-                  <Label htmlFor="2fa">Enabled</Label>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Session Timeout</span>
-                <Select defaultValue="30">
-                  <SelectTrigger className="w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="15">15 min</SelectItem>
-                    <SelectItem value="30">30 min</SelectItem>
-                    <SelectItem value="60">1 hour</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">IP Restrictions</span>
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="ip-restrict" />
-                  <Label htmlFor="ip-restrict">Enabled</Label>
-                </div>
               </div>
             </div>
           </CardContent>
@@ -1550,167 +1729,217 @@ export default function AdminDashboard() {
     </div>
   );
 
-  const renderSystemLogs = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">System Logs</h1>
-        <div className="flex items-center space-x-2">
-          <Button variant="outline" data-testid="button-system-settings" onClick={handleSystemSettings}>
-            <Settings className="mr-2 h-4 w-4" />
-            System Settings
-          </Button>
-          <Button data-testid="button-export-logs">
-            <FileTextIcon className="mr-2 h-4 w-4" />
-            Export Logs
-          </Button>
-        </div>
-      </div>
-
-      {/* Navigation Tabs */}
-      <div className="flex space-x-1 border-b">
-        <Button
-          variant={activeAdminTab === 'users' ? "default" : "ghost"}
-          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
-          onClick={() => handleTabChange('users')}
+  const renderSystemLogs = () => {
+    const getLevelBadge = (level: string) => {
+      const variants: Record<string, any> = {
+        info: "default",
+        warning: "outline", 
+        error: "destructive",
+        debug: "secondary"
+      };
+      const colors: Record<string, string> = {
+        info: "bg-green-500",
+        warning: "border-yellow-500 text-yellow-500",
+        error: "",
+        debug: "bg-blue-500"
+      };
+      
+      return (
+        <Badge 
+          variant={variants[level] as any} 
+          className={colors[level]}
         >
-          <Users className="mr-2 h-4 w-4" />
-          User Management
-        </Button>
-        <Button
-          variant={activeAdminTab === 'permissions' ? "default" : "ghost"}
-          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
-          onClick={() => handleTabChange('permissions')}
-        >
-          <Lock className="mr-2 h-4 w-4" />
-          Permissions & Access
-        </Button>
-        <Button
-          variant={activeAdminTab === 'detection' ? "default" : "ghost"}
-          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
-          onClick={() => handleTabChange('detection')}
-        >
-          <Eye className="mr-2 h-4 w-4" />
-          Detection Settings
-        </Button>
-        <Button
-          variant={activeAdminTab === 'logs' ? "default" : "ghost"}
-          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
-          onClick={() => handleTabChange('logs')}
-        >
-          <FileTextIcon className="mr-2 h-4 w-4" />
-          System Logs
-        </Button>
-      </div>
+          {level.toUpperCase()}
+        </Badge>
+      );
+    };
 
-      {/* Logs Content */}
-      <div className="space-y-4">
-        <div className="flex items-center space-x-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search logs..."
-              className="pl-10"
-            />
-          </div>
-          <Select defaultValue="all">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Logs</SelectItem>
-              <SelectItem value="error">Errors</SelectItem>
-              <SelectItem value="warning">Warnings</SelectItem>
-              <SelectItem value="info">Info</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select defaultValue="today">
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="today">Today</SelectItem>
-              <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">This Month</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    const formatTimestamp = (timestamp: string) => {
+      return new Date(timestamp).toLocaleString();
+    };
 
-        <Card>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Message</TableHead>
-                  <TableHead>User</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">2024-01-18 14:30:25</TableCell>
-                  <TableCell><Badge variant="default" className="bg-green-500">INFO</Badge></TableCell>
-                  <TableCell>User Management</TableCell>
-                  <TableCell>User Jovilyn Saging logged in successfully</TableCell>
-                  <TableCell>j.saging@example.edu</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">2024-01-18 14:28:12</TableCell>
-                  <TableCell><Badge variant="destructive">ERROR</Badge></TableCell>
-                  <TableCell>Plagiarism Detection</TableCell>
-                  <TableCell>Failed to process document: timeout</TableCell>
-                  <TableCell>System</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">2024-01-18 14:25:45</TableCell>
-                  <TableCell><Badge variant="outline" className="border-yellow-500 text-yellow-500">WARNING</Badge></TableCell>
-                  <TableCell>AI Grading</TableCell>
-                  <TableCell>Low confidence score for assignment CS101-001</TableCell>
-                  <TableCell>m.sagun@example.edu</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">2024-01-18 14:20:33</TableCell>
-                  <TableCell><Badge variant="default" className="bg-green-500">INFO</Badge></TableCell>
-                  <TableCell>System</TableCell>
-                  <TableCell>Database backup completed successfully</TableCell>
-                  <TableCell>System</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="text-muted-foreground">2024-01-18 14:15:18</TableCell>
-                  <TableCell><Badge variant="destructive">ERROR</Badge></TableCell>
-                  <TableCell>Authentication</TableCell>
-                  <TableCell>Failed login attempt for unknown user</TableCell>
-                  <TableCell>Unknown</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing 1 to 5 of 247 log entries.
-          </p>
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">System Logs</h1>
           <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" disabled>
-              Previous
+            <Button variant="outline" data-testid="button-system-settings" onClick={handleSystemSettings}>
+              <Settings className="mr-2 h-4 w-4" />
+              System Settings
             </Button>
-            <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
-              1
-            </Button>
-            <Button variant="outline" size="sm">2</Button>
-            <Button variant="outline" size="sm">3</Button>
-            <Button variant="outline" size="sm">
-              Next
+            <Button 
+              data-testid="button-export-logs" 
+              onClick={handleRefreshLogs}
+              disabled={logsRefreshing}
+              variant="outline"
+            >
+              {logsRefreshing ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {logsRefreshing ? 'Refreshing...' : 'Refresh Logs'}
             </Button>
           </div>
         </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex space-x-1 border-b">
+          <Button
+            variant={activeAdminTab === 'users' ? "default" : "ghost"}
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+            onClick={() => handleTabChange('users')}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            User Management
+          </Button>
+          <Button
+            variant={activeAdminTab === 'permissions' ? "default" : "ghost"}
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+            onClick={() => handleTabChange('permissions')}
+          >
+            <Lock className="mr-2 h-4 w-4" />
+            Permissions & Access
+          </Button>
+          <Button
+            variant={activeAdminTab === 'detection' ? "default" : "ghost"}
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+            onClick={() => handleTabChange('detection')}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Detection Settings
+          </Button>
+          <Button
+            variant={activeAdminTab === 'logs' ? "default" : "ghost"}
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary"
+            onClick={() => handleTabChange('logs')}
+          >
+            <FileTextIcon className="mr-2 h-4 w-4" />
+            System Logs
+          </Button>
+        </div>
+
+        {/* Logs Content */}
+        <div className="space-y-4">
+          {/* Status Bar */}
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <div className="flex items-center space-x-4">
+              <span>Total Logs: {logsPagination.total}</span>
+              {lastRefreshTime && (
+                <span>Last updated: {lastRefreshTime.toLocaleTimeString()}</span>
+              )}
+            </div>
+            {logsRefreshing && (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Updating...</span>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search logs..."
+                className="pl-10"
+                value={logsFilters.search}
+                onChange={(e) => setLogsFilters(prev => ({ ...prev, search: e.target.value }))}
+              />
+            </div>
+            <Select value={logsFilters.level} onValueChange={(value) => setLogsFilters(prev => ({ ...prev, level: value }))}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Logs</SelectItem>
+                <SelectItem value="error">Errors</SelectItem>
+                <SelectItem value="warning">Warnings</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="debug">Debug</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Level</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Message</TableHead>
+                    <TableHead>User</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logsLoading && logs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        <div className="flex items-center justify-center">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading logs...
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : logs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No logs found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    logs.map((log: any) => (
+                      <TableRow key={log.id} className={logsRefreshing ? 'opacity-75' : ''}>
+                        <TableCell className="text-muted-foreground">
+                          {formatTimestamp(log.createdAt)}
+                        </TableCell>
+                        <TableCell>{getLevelBadge(log.level)}</TableCell>
+                        <TableCell>{log.source}</TableCell>
+                        <TableCell className="max-w-md truncate">{log.message}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {log.userId ? 'User' : 'System'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {((logsPagination.page - 1) * logsPagination.limit) + 1} to {Math.min(logsPagination.page * logsPagination.limit, logsPagination.total)} of {logsPagination.total} log entries.
+            </p>
+            <div className="flex items-center space-x-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                disabled={logsPagination.page === 1}
+                onClick={() => setLogsPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+              >
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" className="bg-primary text-primary-foreground">
+                {logsPagination.page}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                disabled={logsPagination.page * logsPagination.limit >= logsPagination.total}
+                onClick={() => setLogsPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderCourseManagement = () => (
     <div className="space-y-6">
@@ -1779,7 +2008,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Published</p>
-                <p className="text-2xl font-bold">{courses.filter(c => c.status === 'Published').length}</p>
+                <p className="text-2xl font-bold">{courses.filter((c: any) => c.status === 'Published').length}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-green-500" />
             </div>
@@ -1790,7 +2019,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Draft</p>
-                <p className="text-2xl font-bold">{courses.filter(c => c.status === 'Draft').length}</p>
+                <p className="text-2xl font-bold">{courses.filter((c: any) => c.status === 'Draft').length}</p>
               </div>
               <FileText className="h-8 w-8 text-yellow-500" />
             </div>
@@ -1800,8 +2029,19 @@ export default function AdminDashboard() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
+                <p className="text-sm font-medium text-muted-foreground">Archived</p>
+                <p className="text-2xl font-bold">{courses.filter((c: any) => c.status === 'Archived').length}</p>
+              </div>
+              <Archive className="h-8 w-8 text-red-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Enrollments</p>
-                <p className="text-2xl font-bold">{courses.reduce((sum, c) => sum + c.enrolledStudents, 0)}</p>
+                <p className="text-2xl font-bold">{courses.reduce((sum: any, c: any) => sum + c.enrolledStudents, 0)}</p>
               </div>
               <Users className="h-8 w-8 text-blue-500" />
             </div>
@@ -1826,7 +2066,7 @@ export default function AdminDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCourses.map((course) => (
+              {filteredCourses.map((course: any) => (
                 <TableRow key={course.id}>
                   <TableCell>
                     <div>
@@ -1840,18 +2080,20 @@ export default function AdminDashboard() {
                       variant={
                         course.status === 'Published' ? 'default' : 
                         course.status === 'Draft' ? 'secondary' : 
+                        course.status === 'Archived' ? 'destructive' :
                         'outline'
                       }
                       className={
                         course.status === 'Published' ? 'bg-green-500 hover:bg-green-600' :
                         course.status === 'Draft' ? 'bg-yellow-500 hover:bg-yellow-600' :
+                        course.status === 'Archived' ? 'bg-red-500 hover:bg-red-600' :
                         ''
                       }
                     >
                       {course.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>{course.instructor}</TableCell>
+                  <TableCell>{getInstructorName(course.instructor)}</TableCell>
                   <TableCell>
                     <div className="text-sm">
                       <div>{course.enrolledStudents} / {course.maxStudents}</div>
@@ -1883,14 +2125,25 @@ export default function AdminDashboard() {
                       >
                         <UserPlus className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => handleArchiveCourse(course)}
-                        title="Archive Course"
-                      >
-                        <Archive className="h-4 w-4" />
-                      </Button>
+                      {course.status === 'Published' ? (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleArchiveCourse(course)}
+                          title="Archive Course"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleUnarchiveCourse(course)}
+                          title="Unarchive Course"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button 
                         variant="ghost" 
                         size="sm"
@@ -2002,7 +2255,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Total Students</p>
-                    <p className="text-2xl font-bold">{courses.reduce((sum, c) => sum + c.enrolledStudents, 0)}</p>
+                    <p className="text-2xl font-bold">{courses.reduce((sum: any, c: any) => sum + c.enrolledStudents, 0)}</p>
                   </div>
                   <Users className="h-8 w-8 text-muted-foreground" />
                 </div>
@@ -2086,115 +2339,212 @@ export default function AdminDashboard() {
       {selectedReportType === 'course' && (
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
-            <Select value={selectedCourse?.courseId || ""} onValueChange={(value) => setSelectedCourse(courseReports.find(c => c.courseId === value))}>
+            <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Select a course to view detailed reports" />
               </SelectTrigger>
               <SelectContent>
-                {courseReports.map((course) => (
-                  <SelectItem key={course.courseId} value={course.courseId}>
-                    {course.courseName} ({course.courseCode})
+                {courses.map((course: any) => (
+                  <SelectItem key={course.id} value={course.id}>
+                    {course.name} ({course.code})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" onClick={() => {/* Handle export course report */}}>
+            <Button 
+              variant="outline" 
+              onClick={() => {/* Handle export course report */}}
+              disabled={!courseReport}
+            >
               <Download className="mr-2 h-4 w-4" />
               Export Report
             </Button>
           </div>
 
-          {selectedCourse && (
-            <div className="grid gap-6 md:grid-cols-2">
-              {/* Enrollment and Completion */}
+          {courseReportLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mr-2" />
+              Loading course report...
+            </div>
+          ) : courseReport ? (
+            <div className="space-y-6">
+              {/* Course Overview */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Enrollment & Completion</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>Total Students</span>
-                    <span className="font-bold">{selectedCourse.totalStudents}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Completed Students</span>
-                    <span className="font-bold">{selectedCourse.completedStudents}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Enrollment Rate</span>
-                    <span className="font-bold text-blue-600">{selectedCourse.enrollmentRate}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Completion Rate</span>
-                    <span className="font-bold text-green-600">{selectedCourse.completionRate}%</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Performance Metrics */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Performance Metrics</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>Average Grade</span>
-                    <span className="font-bold">{selectedCourse.averageGrade}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Quiz Average</span>
-                    <span className="font-bold">{selectedCourse.quizAverage}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Assignment Average</span>
-                    <span className="font-bold">{selectedCourse.assignmentAverage}%</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Engagement Score</span>
-                    <span className="font-bold">{selectedCourse.engagementScore}/10</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Engagement Data */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Engagement Data</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span>Average Time Spent</span>
-                    <span className="font-bold">{selectedCourse.averageTimeSpent} hours</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Discussion Posts</span>
-                    <span className="font-bold">{selectedCourse.discussionPosts}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Last Activity</span>
-                    <span className="font-bold">{selectedCourse.lastActivity}</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Student Progress */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Student Progress Tracking</CardTitle>
+                  <CardTitle>Course Overview</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {studentProgress.filter(s => s.courseId === selectedCourse.courseId).map((student) => (
-                      <div key={student.studentId} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <div className="font-medium">{student.studentName}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {student.modulesCompleted}/{student.totalModules} modules completed
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <h3 className="font-semibold text-lg">{courseReport.course.title}</h3>
+                      <p className="text-muted-foreground">{courseReport.course.code} - Section {courseReport.course.section}</p>
+                      <p className="text-sm text-muted-foreground mt-2">{courseReport.course.description}</p>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Instructor:</span>
+                        <span className="font-medium">{courseReport.course.instructor}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Status:</span>
+                        <Badge variant={courseReport.course.status === 'Published' ? 'default' : 'secondary'}>
+                          {courseReport.course.status}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Created:</span>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(courseReport.course.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Key Metrics */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Enrolled Students</p>
+                        <p className="text-2xl font-bold">{courseReport.metrics.totalEnrolled}</p>
+                      </div>
+                      <Users className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Assignments</p>
+                        <p className="text-2xl font-bold">{courseReport.metrics.totalAssignments}</p>
+                        <p className="text-xs text-muted-foreground">{courseReport.metrics.publishedAssignments} published</p>
+                      </div>
+                      <BookOpen className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Average Grade</p>
+                        <p className="text-2xl font-bold">{courseReport.metrics.averageGrade}/100</p>
+                        <p className="text-xs text-muted-foreground">{courseReport.metrics.gradedSubmissions} graded</p>
+                      </div>
+                      <Award className="h-8 w-8 text-yellow-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Submission Rate</p>
+                        <p className="text-2xl font-bold">{courseReport.metrics.submissionRate}%</p>
+                        <p className="text-xs text-muted-foreground">{courseReport.metrics.totalSubmissions} submissions</p>
+                      </div>
+                      <TrendingUp className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Grade Distribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Grade Distribution</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-5">
+                    {Object.entries(courseReport.gradeDistribution).map(([grade, count]) => (
+                      <div key={grade} className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{count as number}</div>
+                        <div className="text-sm text-muted-foreground">Grade {grade}</div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Performers and Students at Risk */}
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Top Performers</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {courseReport.topPerformers.length > 0 ? (
+                      <div className="space-y-2">
+                        {courseReport.topPerformers.map((student: any, index: number) => (
+                          <div key={student.studentId} className="flex justify-between items-center">
+                            <span className="text-sm">Student {student.studentId.slice(-4)}</span>
+                            <Badge variant="default">{student.averageGrade.toFixed(1)}</Badge>
                           </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No grades available yet</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Students at Risk</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {courseReport.studentsAtRisk.length > 0 ? (
+                      <div className="space-y-2">
+                        {courseReport.studentsAtRisk.map((student: any, index: number) => (
+                          <div key={student.studentId} className="flex justify-between items-center">
+                            <span className="text-sm">Student {student.studentId.slice(-4)}</span>
+                            <div className="text-right">
+                              <Badge variant="destructive">{student.averageGrade.toFixed(1)}</Badge>
+                              <p className="text-xs text-muted-foreground">{student.missingAssignments} missing</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-green-600">No students at risk</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Assignments Overview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Assignments Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {courseReport.assignments.map((assignment: any) => (
+                      <div key={assignment.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                          <h4 className="font-medium">{assignment.title}</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Due: {assignment.dueDate ? new Date(assignment.dueDate).toLocaleDateString() : 'No due date'}
+                          </p>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold">{student.progressPercentage}%</div>
-                          <div className="text-sm text-muted-foreground">Grade: {student.currentGrade}%</div>
+                          <div className="flex items-center space-x-4">
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Submissions: </span>
+                              <span className="font-medium">{assignment.submissions}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Avg Score: </span>
+                              <span className="font-medium">{assignment.averageScore}/100</span>
+                            </div>
+                            <Badge variant={assignment.isPublished ? 'default' : 'secondary'}>
+                              {assignment.isPublished ? 'Published' : 'Draft'}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -2202,7 +2552,11 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
-          )}
+          ) : selectedCourseId ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No course selected
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -2311,19 +2665,26 @@ export default function AdminDashboard() {
               <Input
                 placeholder="Search activity logs..."
                 className="pl-10"
+                value={activityLogsSearch}
+                onChange={(e) => setActivityLogsSearch(e.target.value)}
               />
             </div>
-            <Select defaultValue="all">
+            <Select value={activityLogsFilter} onValueChange={setActivityLogsFilter}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="enrollment">Enrollments</SelectItem>
-                <SelectItem value="submission">Submissions</SelectItem>
-                <SelectItem value="quiz">Quizzes</SelectItem>
+                <SelectItem value="registration">Registrations</SelectItem>
+                <SelectItem value="login">Logins</SelectItem>
+                <SelectItem value="deletion">Deletions</SelectItem>
+                <SelectItem value="system">System</SelectItem>
               </SelectContent>
             </Select>
+            <Button variant="outline" onClick={fetchActivityLogs} disabled={activityLogsLoading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${activityLogsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Button variant="outline" onClick={() => {/* Handle export logs */}}>
               <Download className="mr-2 h-4 w-4" />
               Export Logs
@@ -2338,22 +2699,42 @@ export default function AdminDashboard() {
                     <TableHead>Timestamp</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>User</TableHead>
-                    <TableHead>Course</TableHead>
                     <TableHead>Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {activityLogs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell className="text-muted-foreground">{log.timestamp}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{log.action}</Badge>
+                  {activityLogsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-8">
+                        <div className="flex items-center justify-center">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading activity logs...
+                        </div>
                       </TableCell>
-                      <TableCell className="font-medium">{log.user}</TableCell>
-                      <TableCell>{log.course}</TableCell>
-                      <TableCell className="text-muted-foreground">{log.details}</TableCell>
                     </TableRow>
-                  ))}
+                  ) : filteredActivityLogs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                        No activity logs found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredActivityLogs.map((log: any) => (
+                      <TableRow key={log.id}>
+                        <TableCell className="text-muted-foreground">{log.timestamp}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={log.level === 'error' ? 'destructive' : 
+                                   log.level === 'warning' ? 'secondary' : 'outline'}
+                          >
+                            {log.action}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">{log.user}</TableCell>
+                        <TableCell className="text-muted-foreground">{log.details}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -2362,7 +2743,7 @@ export default function AdminDashboard() {
           {/* Pagination */}
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              Showing 1 to {activityLogs.length} of {activityLogs.length} activity logs.
+              Showing 1 to {filteredActivityLogs.length} of {filteredActivityLogs.length} activity logs.
             </p>
             <div className="flex items-center space-x-2">
               <Button variant="outline" size="sm" disabled>
@@ -2466,17 +2847,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="bio">Bio</Label>
-              <Textarea
-                id="bio"
-                rows={3}
-                className="w-full mt-1"
-                value={profileSettings.bio}
-                onChange={(e) => setProfileSettings({...profileSettings, bio: e.target.value})}
-                placeholder="Tell us a bit about yourself..."
-              />
-            </div>
 
             <Button onClick={handleSaveProfile} disabled={isProfileSaving}>
               {isProfileSaving ? (
@@ -2494,206 +2864,7 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Notification Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2" />
-              Notification Preferences
-            </CardTitle>
-            <CardDescription>
-              Choose how you want to be notified about system activities
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Email Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Mail className="h-4 w-4 mr-2" />
-                Email Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailNotifications">Email Notifications</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Receive email notifications for system events</p>
-                  </div>
-                  <Switch
-                    id="emailNotifications"
-                    checked={notificationSettings.emailNotifications}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, emailNotifications: checked})}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="userRegistrations">User Registrations</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when new users register</p>
-                  </div>
-                  <Switch
-                    id="userRegistrations"
-                    checked={notificationSettings.userRegistrations}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, userRegistrations: checked})}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="systemAlerts">System Alerts</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about system maintenance and updates</p>
-                  </div>
-                  <Switch
-                    id="systemAlerts"
-                    checked={notificationSettings.systemAlerts}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, systemAlerts: checked})}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="securityAlerts">Security Alerts</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about security-related events</p>
-                  </div>
-                  <Switch
-                    id="securityAlerts"
-                    checked={notificationSettings.securityAlerts}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, securityAlerts: checked})}
-                  />
-                </div>
-              </div>
-            </div>
 
-            <Separator />
-
-            {/* Push Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Push Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="pushNotifications">Push Notifications</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Receive push notifications on your device</p>
-                  </div>
-                  <Switch
-                    id="pushNotifications"
-                    checked={notificationSettings.pushNotifications}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, pushNotifications: checked})}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Digest Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Calendar className="h-4 w-4 mr-2" />
-                Digest Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="weeklyReports">Weekly Reports</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Weekly summary of system activities and statistics</p>
-                  </div>
-                  <Switch
-                    id="weeklyReports"
-                    checked={notificationSettings.weeklyReports}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, weeklyReports: checked})}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
-              {isNotificationsSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Notification Preferences
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Privacy Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Shield className="h-5 w-5 mr-2" />
-              Privacy Settings
-            </CardTitle>
-            <CardDescription>
-              Control your privacy and visibility
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="profileVisible">Profile Visibility</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Make your profile visible to other users</p>
-              </div>
-              <Switch
-                id="profileVisible"
-                checked={privacySettings.profileVisibility === "public"}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, profileVisibility: checked ? "public" : "private"})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="showEmail">Show Email Address</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Display your email on your profile</p>
-              </div>
-              <Switch
-                id="showEmail"
-                checked={privacySettings.showEmail}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, showEmail: checked})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="showActivity">Show Activity Status</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Display when you're online or offline</p>
-              </div>
-              <Switch
-                id="showActivity"
-                checked={privacySettings.showActivity}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, showActivity: checked})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="allowMessages">Allow Messages</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Allow other users to message you</p>
-              </div>
-              <Switch
-                id="allowMessages"
-                checked={privacySettings.allowMessages}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, allowMessages: checked})}
-              />
-            </div>
-
-            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
-              {isPrivacySaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Privacy Settings
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Account Security */}
         <Card>
@@ -2714,15 +2885,6 @@ export default function AdminDashboard() {
               </div>
               <Button variant="outline" onClick={() => {/* Handle change password */}}>
                 Change Password
-              </Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Two-Factor Authentication</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Add an extra layer of security to your account</p>
-              </div>
-              <Button variant="outline" onClick={() => {/* Handle 2FA setup */}}>
-                Enable 2FA
               </Button>
             </div>
           </CardContent>
@@ -2813,49 +2975,54 @@ export default function AdminDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              Recent Activity
+              {isActivityLoading && (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+            </CardTitle>
             <CardDescription>Latest system events and activities</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {recentActivity.slice(0, 4).map((activity: any) => (
-                <div key={activity.id} className="border-b pb-2 last:border-0">
-                  <p className="text-sm font-medium" data-testid={`text-activity-${activity.id}`}>
-                    {activity.description}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{activity.timestamp}</p>
+              {isActivityLoading && recentActivity.length === 0 ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                  <span className="text-sm text-muted-foreground">Loading activities...</span>
                 </div>
-              ))}
+              ) : recentActivity.length > 0 ? (
+                recentActivity.slice(0, 4).map((activity: any) => {
+                  const timestamp = new Date(activity.timestamp);
+                  const timeAgo = getTimeAgo(timestamp);
+                  
+                  return (
+                    <div key={activity.id} className="border-b pb-2 last:border-0">
+                      <div className="flex items-start space-x-2">
+                        <div className={`w-2 h-2 rounded-full mt-2 ${
+                          activity.level === 'error' ? 'bg-red-500' : 
+                          activity.level === 'warning' ? 'bg-yellow-500' : 
+                          'bg-green-500'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium" data-testid={`text-activity-${activity.id}`}>
+                            {activity.description}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{timeAgo}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-4">
+                  <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No recent activity</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common administrative tasks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Button className="w-full justify-start" variant="outline" data-testid="button-create-user">
-                <Plus className="mr-2 h-4 w-4" />
-                Add User
-              </Button>
-              <Button className="w-full justify-start" variant="outline" data-testid="button-system-settings">
-                <Settings className="mr-2 h-4 w-4" />
-                System Settings
-              </Button>
-              <Button className="w-full justify-start" variant="outline" data-testid="button-view-reports">
-                <TrendingUp className="mr-2 h-4 w-4" />
-                View Reports
-              </Button>
-              <Button className="w-full justify-start" variant="outline" data-testid="button-backup-system">
-                <Shield className="mr-2 h-4 w-4" />
-                Backup System
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
@@ -3125,70 +3292,72 @@ export default function AdminDashboard() {
             </main>
         </div>
 
+
       {/* Add User Modal */}
       <Dialog open={isAddUserModalOpen} onOpenChange={setIsAddUserModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New User</DialogTitle>
+            <DialogTitle>Add New Instructor</DialogTitle>
             <DialogDescription>
-              Create a new user account in the system.
+              Create a new instructor account for the system.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                value={userForm.name}
-                onChange={(e) => setUserForm({...userForm, name: e.target.value})}
-                placeholder="Enter full name"
-              />
-      </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="firstName">First Name</Label>
+                <Input
+                  id="firstName"
+                  value={userForm.firstName}
+                  onChange={(e) => setUserForm({ ...userForm, firstName: e.target.value })}
+                  placeholder="Enter first name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="lastName">Surname</Label>
+                <Input
+                  id="lastName"
+                  value={userForm.lastName}
+                  onChange={(e) => setUserForm({ ...userForm, lastName: e.target.value })}
+                  placeholder="Enter surname"
+                />
+              </div>
+            </div>
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={userForm.email}
-                onChange={(e) => setUserForm({...userForm, email: e.target.value})}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                 placeholder="Enter email address"
               />
             </div>
             <div>
-              <Label htmlFor="role">Role</Label>
-              <Select value={userForm.role} onValueChange={(value) => setUserForm({...userForm, role: value})}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Student">Student</SelectItem>
-                  <SelectItem value="Professor">Professor</SelectItem>
-                  <SelectItem value="Admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={userForm.password}
+                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                placeholder="Enter password"
+              />
             </div>
             <div>
               <Label htmlFor="status">Status</Label>
-              <Select value={userForm.status} onValueChange={(value) => setUserForm({...userForm, status: value})}>
+              <Select
+                value={userForm.status}
+                onValueChange={(value) => setUserForm({ ...userForm, status: value as 'Active' | 'Inactive' | 'Pending' })}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="Inactive">Inactive</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label htmlFor="plagiarismFlags">Plagiarism Flags</Label>
-              <Input
-                id="plagiarismFlags"
-                type="number"
-                min="0"
-                value={userForm.plagiarismFlags}
-                onChange={(e) => setUserForm({...userForm, plagiarismFlags: parseInt(e.target.value) || 0})}
-                placeholder="0"
-              />
             </div>
           </div>
           <DialogFooter>
@@ -3196,7 +3365,7 @@ export default function AdminDashboard() {
               Cancel
             </Button>
             <Button onClick={handleSaveUser}>
-              Add User
+              Create Instructor
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3212,14 +3381,25 @@ export default function AdminDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-name">Full Name</Label>
-              <Input
-                id="edit-name"
-                value={userForm.name}
-                onChange={(e) => setUserForm({...userForm, name: e.target.value})}
-                placeholder="Enter full name"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="edit-firstName">First Name</Label>
+                <Input
+                  id="edit-firstName"
+                  value={userForm.firstName}
+                  onChange={(e) => setUserForm({...userForm, firstName: e.target.value})}
+                  placeholder="Enter first name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-lastName">Surname</Label>
+                <Input
+                  id="edit-lastName"
+                  value={userForm.lastName}
+                  onChange={(e) => setUserForm({...userForm, lastName: e.target.value})}
+                  placeholder="Enter surname"
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="edit-email">Email</Label>
@@ -3233,7 +3413,7 @@ export default function AdminDashboard() {
             </div>
             <div>
               <Label htmlFor="edit-role">Role</Label>
-              <Select value={userForm.role} onValueChange={(value) => setUserForm({...userForm, role: value})}>
+              <Select value={userForm.role} onValueChange={(value) => setUserForm({...userForm, role: value as 'Professor'})}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -3246,7 +3426,7 @@ export default function AdminDashboard() {
             </div>
             <div>
               <Label htmlFor="edit-status">Status</Label>
-              <Select value={userForm.status} onValueChange={(value) => setUserForm({...userForm, status: value})}>
+              <Select value={userForm.status} onValueChange={(value) => setUserForm({...userForm, status: value as 'Active' | 'Inactive' | 'Pending'})}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -3378,6 +3558,15 @@ export default function AdminDashboard() {
                   placeholder="e.g., CS101"
                 />
               </div>
+              <div>
+                <Label htmlFor="course-section">Section</Label>
+                <Input
+                  id="course-section"
+                  value={courseForm.section || 'A'}
+                  onChange={(e) => setCourseForm({...courseForm, section: e.target.value})}
+                  placeholder="e.g., A, B, 1, 2"
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="course-description">Description</Label>
@@ -3392,12 +3581,27 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="instructor">Instructor</Label>
-                <Input
-                  id="instructor"
+                <Select
                   value={courseForm.instructor}
-                  onChange={(e) => setCourseForm({...courseForm, instructor: e.target.value})}
-                  placeholder="Instructor name"
-                />
+                  onValueChange={(value) => setCourseForm({...courseForm, instructor: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an instructor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instructorsLoading ? (
+                      <SelectItem value="" disabled>Loading instructors...</SelectItem>
+                    ) : instructors.length === 0 ? (
+                      <SelectItem value="" disabled>No instructors available</SelectItem>
+                    ) : (
+                      instructors.map((instructor: any) => (
+                        <SelectItem key={instructor.id} value={instructor.id}>
+                          {instructor.firstName} {instructor.lastName} ({instructor.email})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="max-students">Max Students</Label>
@@ -3497,12 +3701,27 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit-instructor">Instructor</Label>
-                <Input
-                  id="edit-instructor"
+                <Select
                   value={courseForm.instructor}
-                  onChange={(e) => setCourseForm({...courseForm, instructor: e.target.value})}
-                  placeholder="Instructor name"
-                />
+                  onValueChange={(value) => setCourseForm({...courseForm, instructor: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an instructor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instructorsLoading ? (
+                      <SelectItem value="" disabled>Loading instructors...</SelectItem>
+                    ) : instructors.length === 0 ? (
+                      <SelectItem value="" disabled>No instructors available</SelectItem>
+                    ) : (
+                      instructors.map((instructor: any) => (
+                        <SelectItem key={instructor.id} value={instructor.id}>
+                          {instructor.firstName} {instructor.lastName} ({instructor.email})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="edit-max-students">Max Students</Label>
@@ -3571,67 +3790,100 @@ export default function AdminDashboard() {
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <h3 className="font-medium mb-3">Enrolled Students ({selectedCourse?.enrolledStudents})</h3>
+                <h3 className="font-medium mb-3">Enrolled Students ({enrolledStudents.length})</h3>
                 <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span className="text-sm">John Doe</span>
-                      <Button variant="ghost" size="sm">
-                        <UserMinus className="h-4 w-4" />
-                      </Button>
+                  {enrolledStudents.length > 0 ? (
+                    <div className="space-y-2">
+                      {enrolledStudents.map((enrollment) => (
+                        <div key={enrollment.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div>
+                            <span className="text-sm font-medium">
+                              {enrollment.student ? `${enrollment.student.firstName} ${enrollment.student.lastName}` : 'Unknown Student'}
+                            </span>
+                            <p className="text-xs text-muted-foreground">{enrollment.student?.email}</p>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => unenrollStudent(selectedCourse.id, enrollment.studentId)}
+                          >
+                            <UserMinus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span className="text-sm">Jane Smith</span>
-                      <Button variant="ghost" size="sm">
-                        <UserMinus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span className="text-sm">Mike Johnson</span>
-                      <Button variant="ghost" size="sm">
-                        <UserMinus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No students enrolled yet</p>
+                  )}
                 </div>
-                <Button className="w-full mt-3">
+                <Button 
+                  className="w-full mt-3"
+                  onClick={() => {
+                    if (selectedStudents.length > 0) {
+                      enrollStudents(selectedCourse.id, selectedStudents);
+                    }
+                  }}
+                  disabled={selectedStudents.length === 0 || enrollmentLoading}
+                >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Add Students
+                  {enrollmentLoading ? 'Enrolling...' : `Add ${selectedStudents.length} Students`}
                 </Button>
               </div>
               <div>
-                <h3 className="font-medium mb-3">Course Instructors</h3>
-                <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span className="text-sm">{selectedCourse?.instructor}</span>
-                      <Button variant="ghost" size="sm">
-                        <UserMinus className="h-4 w-4" />
-                      </Button>
+                <h3 className="font-semibold mb-3 text-foreground">Available Students</h3>
+                <div className="border-2 border-blue-200 rounded-lg p-4 max-h-64 overflow-y-auto bg-blue-50/10">
+                  {availableStudents.length > 0 ? (
+                    <div className="space-y-2">
+                      {availableStudents
+                        .filter(student => !enrolledStudents.some(enrollment => enrollment.studentId === student.id))
+                        .map((student) => (
+                        <div key={student.id} className="flex items-center justify-between p-3 bg-white/90 dark:bg-gray-800/90 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+                          <div className="flex items-center space-x-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedStudents.includes(student.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedStudents([...selectedStudents, student.id]);
+                                } else {
+                                  setSelectedStudents(selectedStudents.filter(id => id !== student.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                            />
+                            <div>
+                              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{student.firstName} {student.lastName}</span>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">{student.email}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">No available students</p>
+                  )}
                 </div>
-                <Button className="w-full mt-3">
-                  <UserPlus className="mr-2 h-4 w-4" />
-                  Add Instructor
-                </Button>
-              </div>
-            </div>
-            <div className="border-t pt-4">
-              <h3 className="font-medium mb-3">Bulk Actions</h3>
-              <div className="flex space-x-2">
-                <Button variant="outline" size="sm">
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Roster
-                </Button>
-                <Button variant="outline" size="sm">
-                  <Upload className="mr-2 h-4 w-4" />
-                  Import Students
-                </Button>
-                <Button variant="outline" size="sm">
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Reset Course
-                </Button>
+                <div className="mt-3 space-y-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setSelectedStudents(availableStudents
+                      .filter(student => !enrolledStudents.some(enrollment => enrollment.studentId === student.id))
+                      .map(student => student.id)
+                    )}
+                    className="w-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300"
+                  >
+                    Select All Available
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setSelectedStudents([])}
+                    className="w-full bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

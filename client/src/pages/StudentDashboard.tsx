@@ -93,35 +93,35 @@ export default function StudentDashboard() {
   });
   
   // Initialize tab from URL hash, localStorage, or default to 'overview'
-  const getInitialTab = (): 'overview' | 'courses' | 'grades' | 'settings' => {
+  const getInitialTab = (): 'overview' | 'courses' | 'assignments' | 'grades' | 'settings' => {
     // Check URL hash first
     const hash = window.location.hash.replace('#', '');
-    if (['overview', 'courses', 'grades', 'settings'].includes(hash)) {
-      return hash as 'overview' | 'courses' | 'grades' | 'settings';
+    if (['overview', 'courses', 'assignments', 'grades', 'settings'].includes(hash)) {
+      return hash as 'overview' | 'courses' | 'assignments' | 'grades' | 'settings';
     }
     
     // Fall back to localStorage
     const savedTab = localStorage.getItem('student-dashboard-tab');
-    if (savedTab && ['overview', 'courses', 'grades', 'settings'].includes(savedTab)) {
-      return savedTab as 'overview' | 'courses' | 'grades' | 'settings';
+    if (savedTab && ['overview', 'courses', 'assignments', 'grades', 'settings'].includes(savedTab)) {
+      return savedTab as 'overview' | 'courses' | 'assignments' | 'grades' | 'settings';
     }
     
     // Default to overview
     return 'overview';
   };
 
-  const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'grades' | 'settings'>(getInitialTab());
+  const [selectedTab, setSelectedTab] = useState<'overview' | 'courses' | 'assignments' | 'grades' | 'settings'>(getInitialTab());
 
   // Set initial URL hash if not present
   useEffect(() => {
     const currentHash = window.location.hash.replace('#', '');
-    if (!currentHash || !['overview', 'courses', 'grades', 'settings'].includes(currentHash)) {
+    if (!currentHash || !['overview', 'courses', 'assignments', 'grades', 'settings'].includes(currentHash)) {
       window.history.replaceState(null, '', `#${selectedTab}`);
     }
   }, []); // Run only on mount
   
   // Custom function to handle tab changes with URL and localStorage persistence
-  const handleTabChange = (tab: 'overview' | 'courses' | 'grades' | 'settings') => {
+  const handleTabChange = (tab: 'overview' | 'courses' | 'assignments' | 'grades' | 'settings') => {
     setSelectedTab(tab);
     // Update URL hash
     window.history.pushState(null, '', `#${tab}`);
@@ -133,8 +133,8 @@ export default function StudentDashboard() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['overview', 'courses', 'grades', 'settings'].includes(hash)) {
-        setSelectedTab(hash as 'overview' | 'courses' | 'grades' | 'settings');
+      if (['overview', 'courses', 'assignments', 'grades', 'settings'].includes(hash)) {
+        setSelectedTab(hash as 'overview' | 'courses' | 'assignments' | 'grades' | 'settings');
         localStorage.setItem('student-dashboard-tab', hash);
       }
     };
@@ -195,33 +195,43 @@ export default function StudentDashboard() {
     refetchInterval: 5000, // Auto-refresh assignments every 5 seconds
   });
 
+  // Query to fetch student assignments for the assignments tab
+  const { data: studentAssignments = [], isLoading: isAssignmentsLoading } = useQuery({
+    queryKey: ['/api/assignments/student', user?.id],
+    queryFn: () => fetch(`/api/assignments/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!user?.id,
+    refetchInterval: 5000, // Auto-refresh assignments every 5 seconds
+  });
+
+  // Fetch student grades
+  const { data: studentGrades = [], isLoading: isGradesLoading } = useQuery({
+    queryKey: ['/api/grades/student', user?.id],
+    queryFn: () => fetch(`/api/grades/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
+    enabled: !!user?.id,
+    refetchInterval: 5000, // Auto-refresh grades every 5 seconds
+  });
+
   // Settings state management
   const [profileSettings, setProfileSettings] = useState({
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     email: user?.email || '',
-    major: 'Computer Science',
-    bio: 'Passionate computer science student with interests in web development and machine learning.'
+    major: 'Computer Science'
   });
-  
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailAssignments: true,
-    emailGrades: true,
-    emailAnnouncements: true,
-    pushAssignments: true,
-    pushGrades: false,
-    pushAnnouncements: true
-  });
-  
-  const [privacySettings, setPrivacySettings] = useState({
-    profileVisibility: 'public',
-    showGrades: false,
-    allowMessages: true
-  });
+
+  // Update profile settings when user data changes
+  useEffect(() => {
+    if (user) {
+      setProfileSettings({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        major: 'Computer Science'
+      });
+    }
+  }, [user]);
   
   const [isProfileSaving, setIsProfileSaving] = useState(false);
-  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
-  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
 
   // Mock notifications data with state management
   // Generate base notifications from course data (immutable)
@@ -448,75 +458,7 @@ export default function StudentDashboard() {
     }
   };
 
-  const handleSaveNotifications = async () => {
-    if (!user?.id) return;
-    
-    setIsNotificationsSaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
-      });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Notification Settings Updated",
-          description: "Your notification preferences have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save notification settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsNotificationsSaving(false);
-    }
-  };
-
-  const handleSavePrivacy = async () => {
-    if (!user?.id) return;
-    
-    setIsPrivacySaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Privacy Settings Updated",
-          description: "Your privacy settings have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save privacy settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsPrivacySaving(false);
-    }
-  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -524,6 +466,48 @@ export default function StudentDashboard() {
       sendMessage();
     }
   };
+
+  // Calculate assignments due this week
+  const assignmentsDueThisWeek = useMemo(() => {
+    if (!studentAssignments.length) return 0;
+    
+    const now = new Date();
+    const oneWeekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    return studentAssignments.filter((assignment: any) => {
+      if (!assignment.dueDate) return false;
+      const dueDate = new Date(assignment.dueDate);
+      return dueDate >= now && dueDate <= oneWeekFromNow;
+    }).length;
+  }, [studentAssignments]);
+
+  // Calculate study statistics from real data
+  const studyStats = useMemo(() => {
+    const completedAssignments = studentAssignments.filter((assignment: any) => 
+      assignment.status === 'submitted' || assignment.status === 'graded'
+    ).length;
+    
+    const totalSubmissions = studentGrades.length;
+    
+    // Calculate average grade
+    const averageGrade = studentGrades.length > 0 
+      ? studentGrades.reduce((sum: number, grade: any) => sum + (grade.score || 0), 0) / studentGrades.length
+      : 0;
+    
+    // Calculate current streak (simplified - based on recent submissions)
+    const recentSubmissions = studentGrades.filter((grade: any) => {
+      const gradedAt = new Date(grade.gradedAt || grade.createdAt);
+      const daysDiff = Math.floor((Date.now() - gradedAt.getTime()) / (1000 * 60 * 60 * 24));
+      return daysDiff <= 7; // Last 7 days
+    }).length;
+    
+    return {
+      completedAssignments,
+      totalSubmissions,
+      averageGrade: Math.round(averageGrade * 10) / 10,
+      currentStreak: Math.min(recentSubmissions, 30) // Cap at 30 days
+    };
+  }, [studentAssignments, studentGrades]);
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -547,7 +531,7 @@ export default function StudentDashboard() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2</div>
+            <div className="text-2xl font-bold">{assignmentsDueThisWeek}</div>
             <p className="text-xs text-muted-foreground">
               This week
             </p>
@@ -566,20 +550,33 @@ export default function StudentDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {enrolledCourses.map((course: any) => (
-                  <div key={course.id} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">{course.code}</span>
-                      <span className="text-sm text-muted-foreground">0%</span>
+                {enrolledCourses.map((course: any) => {
+                  // Calculate progress based on completed assignments
+                  const courseAssignments = studentAssignments.filter((assignment: any) => 
+                    assignment.courseId === course.id
+                  );
+                  const completedAssignments = courseAssignments.filter((assignment: any) => 
+                    assignment.status === 'submitted' || assignment.status === 'graded'
+                  );
+                  const progress = courseAssignments.length > 0 
+                    ? Math.round((completedAssignments.length / courseAssignments.length) * 100)
+                    : 0;
+                  
+                  return (
+                    <div key={course.id} className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{course.code || course.title}</span>
+                        <span className="text-sm text-muted-foreground">{progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                        style={{ width: `0%` }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -591,20 +588,20 @@ export default function StudentDashboard() {
             <CardContent>
               <div className="space-y-4">
                 <div className="flex justify-between">
-                  <span>Total Study Hours</span>
-                  <span className="font-medium">127 hours</span>
-                </div>
-                <div className="flex justify-between">
                   <span>Assignments Completed</span>
-                  <span className="font-medium">24</span>
+                  <span className="font-medium">{studyStats.completedAssignments}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Quizzes Taken</span>
-                  <span className="font-medium">18</span>
+                  <span>Total Submissions</span>
+                  <span className="font-medium">{studyStats.totalSubmissions}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Current Streak</span>
-                  <span className="font-medium">12 days</span>
+                  <span>Average Grade</span>
+                  <span className="font-medium">{studyStats.averageGrade > 0 ? `${studyStats.averageGrade}%` : 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Active Days</span>
+                  <span className="font-medium">{studyStats.currentStreak} days</span>
                 </div>
               </div>
             </CardContent>
@@ -725,70 +722,91 @@ export default function StudentDashboard() {
           </Button>
         </div>
       </div>
-      <div className="space-y-4">
+      
+      {isAssignmentsLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-3" />
+          <span className="text-muted-foreground">Loading assignments...</span>
+        </div>
+      ) : studentAssignments.length > 0 ? (
+        <div className="space-y-4">
+          {studentAssignments.map((assignment: any) => {
+            const dueDate = assignment.dueDate ? new Date(assignment.dueDate) : null;
+            const isOverdue = dueDate && dueDate < new Date();
+            const daysUntilDue = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+            
+            return (
+              <Card key={assignment.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>{assignment.title}</CardTitle>
+                      <CardDescription>
+                        {assignment.courseCode} - {assignment.courseTitle} ({assignment.courseSection})
+                        {dueDate && (
+                          <span className={isOverdue ? 'text-red-600' : daysUntilDue <= 3 ? 'text-yellow-600' : ''}>
+                            {' '}- Due {isOverdue ? 'Overdue' : daysUntilDue === 0 ? 'Today' : `in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`}
+                          </span>
+                        )}
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant={isOverdue ? "destructive" : daysUntilDue <= 3 ? "secondary" : "outline"}>
+                        {isOverdue ? 'Overdue' : daysUntilDue <= 3 ? 'Due Soon' : 'Not Started'}
+                      </Badge>
+                      <Badge variant="outline">
+                        {assignment.maxScore} points
+                      </Badge>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {assignment.description && (
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {assignment.description}
+                    </p>
+                  )}
+                  {assignment.instructions && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium mb-2">Instructions:</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {assignment.instructions}
+                      </p>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-muted-foreground">
+                      Instructor: {assignment.instructorName}
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button size="sm">
+                        <FileText className="mr-2 h-4 w-4" />
+                        View Details
+                      </Button>
+                      <Button size="sm" variant="outline">
+                        <Upload className="mr-2 h-4 w-4" />
+                        Submit
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Assignment 3: Data Structures</CardTitle>
-                <CardDescription>CS101 - Due in 3 days</CardDescription>
-              </div>
-              <Badge variant="outline">Not Started</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Implement a binary search tree with insertion, deletion, and search operations.
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No Assignments</h3>
+            <p className="text-muted-foreground text-center">
+              You don't have any assignments yet. Check back later or contact your instructors.
             </p>
-            <div className="flex space-x-2">
-              <Button size="sm">
-                <FileText className="mr-2 h-4 w-4" />
-                View Details
-              </Button>
-              <Button size="sm" variant="outline">
-                <Upload className="mr-2 h-4 w-4" />
-                Submit
-              </Button>
-            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Assignment 2: Algorithms</CardTitle>
-                <CardDescription>CS201 - Due in 1 week</CardDescription>
-              </div>
-              <Badge variant="destructive">Overdue</Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Analyze the time complexity of various sorting algorithms.
-            </p>
-            <div className="flex space-x-2">
-              <Button size="sm">
-                <FileText className="mr-2 h-4 w-4" />
-                View Details
-              </Button>
-              <Button size="sm" variant="outline">
-                <Upload className="mr-2 h-4 w-4" />
-                Submit
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </div>
   );
-
-  // Fetch student grades
-  const { data: studentGrades = [], isLoading: isGradesLoading } = useQuery({
-    queryKey: ['/api/grades/student', user?.id],
-    queryFn: () => fetch(`/api/grades/student/${user?.id}`, { credentials: 'include' }).then(r => r.json()),
-    enabled: !!user?.id,
-    refetchInterval: 5000, // Auto-refresh grades every 5 seconds
-  });
 
   // Calculate course grades by grouping submissions
   const courseGrades = useMemo(() => {
@@ -978,17 +996,6 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="bio">Bio</Label>
-              <textarea
-                id="bio"
-                rows={3}
-                className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
-                value={profileSettings.bio}
-                readOnly
-                placeholder="Tell us a bit about yourself..."
-              />
-            </div>
 
             <div className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <Lock className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
@@ -999,184 +1006,7 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
 
-        {/* Notification Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2" />
-              Notification Preferences
-            </CardTitle>
-            <CardDescription>
-              Choose how you want to be notified about course activities
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Email Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Mail className="h-4 w-4 mr-2" />
-                Email Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailAssignments">Assignment Reminders</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about upcoming assignment deadlines</p>
-                  </div>
-                  <Switch
-                    id="emailAssignments"
-                    checked={true}
-                    onCheckedChange={(checked) => {/* Handle change */}}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailGrades">Grade Notifications</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when grades are posted</p>
-                  </div>
-                  <Switch
-                    id="emailGrades"
-                    checked={true}
-                    onCheckedChange={(checked) => {/* Handle change */}}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailAnnouncements">Course Announcements</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified about course announcements</p>
-                  </div>
-                  <Switch
-                    id="emailAnnouncements"
-                    checked={true}
-                    onCheckedChange={(checked) => {/* Handle change */}}
-                  />
-                </div>
-              </div>
-            </div>
 
-            <Separator />
-
-            {/* Push Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Push Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="pushNotifications">Push Notifications</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Receive push notifications on your device</p>
-                  </div>
-                  <Switch
-                    id="pushNotifications"
-                    checked={true}
-                    onCheckedChange={(checked) => {/* Handle change */}}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Digest Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Calendar className="h-4 w-4 mr-2" />
-                Digest Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="weeklyDigest">Weekly Summary</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Weekly summary of course activities</p>
-                  </div>
-                  <Switch
-                    id="weeklyDigest"
-                    checked={false}
-                    onCheckedChange={(checked) => {/* Handle change */}}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
-              {isNotificationsSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Notification Preferences
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Privacy Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Shield className="h-5 w-5 mr-2" />
-              Privacy Settings
-            </CardTitle>
-            <CardDescription>
-              Control your privacy and visibility
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="profileVisible">Profile Visibility</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Make your profile visible to classmates</p>
-              </div>
-              <Switch
-                id="profileVisible"
-                checked={true}
-                onCheckedChange={(checked) => {/* Handle change */}}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="showEmail">Show Email Address</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Display your email on your profile</p>
-              </div>
-              <Switch
-                id="showEmail"
-                checked={false}
-                onCheckedChange={(checked) => {/* Handle change */}}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="allowMessages">Allow Messages</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Allow classmates to message you</p>
-              </div>
-              <Switch
-                id="allowMessages"
-                checked={true}
-                onCheckedChange={(checked) => {/* Handle change */}}
-              />
-            </div>
-
-            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
-              {isPrivacySaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Privacy Settings
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Account Security */}
         <Card>
@@ -1362,6 +1192,16 @@ export default function StudentDashboard() {
               </div>
             )}
             <Button
+              variant={selectedTab === 'assignments' ? "default" : "ghost"}
+              className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
+              onClick={() => handleTabChange('assignments')}
+              data-testid="button-tab-assignments"
+              title={isSidebarCollapsed ? "Assignments" : ""}
+            >
+              <FileText className={`h-4 w-4 ${!isSidebarCollapsed ? 'mr-3' : ''}`} />
+              {!isSidebarCollapsed && "Assignments"}
+            </Button>
+            <Button
               variant={selectedTab === 'grades' ? "default" : "ghost"}
               className={`w-full ${isSidebarCollapsed ? 'justify-center px-0' : 'justify-start'}`}
               onClick={() => handleTabChange('grades')}
@@ -1403,6 +1243,7 @@ export default function StudentDashboard() {
           <div className="p-6">
             {selectedTab === 'overview' && renderOverview()}
             {selectedTab === 'courses' && renderCourses()}
+            {selectedTab === 'assignments' && renderAssignments()}
             {selectedTab === 'grades' && renderGrades()}
             {selectedTab === 'settings' && renderSettings()}
           </div>

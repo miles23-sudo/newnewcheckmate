@@ -214,75 +214,7 @@ export default function InstructorDashboard() {
     }
   };
 
-  const handleSaveNotifications = async () => {
-    if (!user?.id) return;
-    
-    setIsNotificationsSaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'notifications', ...notificationSettings }),
-      });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Notification Settings Updated",
-          description: "Your notification preferences have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save notification settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save notification settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsNotificationsSaving(false);
-    }
-  };
-
-  const handleSavePrivacy = async () => {
-    if (!user?.id) return;
-    
-    setIsPrivacySaving(true);
-    try {
-      const response = await fetch(`/api/users/${user.id}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ type: 'privacy', ...privacySettings }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        toast({
-          title: "Privacy Settings Updated",
-          description: "Your privacy settings have been saved.",
-          variant: "default",
-        });
-      } else {
-        throw new Error(result.error || 'Failed to save privacy settings');
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save privacy settings. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsPrivacySaving(false);
-    }
-  };
 
   // Settings state
   const [profileSettings, setProfileSettings] = useState({
@@ -291,33 +223,28 @@ export default function InstructorDashboard() {
     email: user?.email || '',
     department: "Computer Science",
     title: "Associate Professor",
-    bio: "Passionate educator with expertise in AI and machine learning. Committed to fostering student success through innovative teaching methods.",
     timezone: "America/New_York",
     language: "en"
   });
 
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNotifications: true,
-    assignmentSubmissions: true,
-    gradeReminders: true,
-    systemUpdates: true,
-    studentMessages: true,
-    weeklyDigest: false,
-    pushNotifications: true
-  });
+  // Update profile settings when user data changes
+  useEffect(() => {
+    if (user) {
+      setProfileSettings({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        department: "Computer Science",
+        title: "Associate Professor",
+        timezone: "America/New_York",
+        language: "en"
+      });
+    }
+  }, [user]);
 
-  const [privacySettings, setPrivacySettings] = useState({
-    profileVisibility: "public",
-    showEmail: true,
-    showCourses: true,
-    allowMessages: true,
-    dataSharing: false
-  });
 
   // Loading states for settings save operations
   const [isProfileSaving, setIsProfileSaving] = useState(false);
-  const [isNotificationsSaving, setIsNotificationsSaving] = useState(false);
-  const [isPrivacySaving, setIsPrivacySaving] = useState(false);
   
   // Analytics and Settings state
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
@@ -2009,17 +1936,6 @@ export default function InstructorDashboard() {
               </div>
             </div>
 
-            <div>
-              <Label htmlFor="bio">Bio</Label>
-              <textarea
-                id="bio"
-                rows={3}
-                className="w-full mt-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 bg-gray-50 dark:bg-gray-700"
-                value={profileSettings.bio}
-                readOnly
-                placeholder="Tell us a bit about yourself..."
-              />
-            </div>
 
             <div className="flex items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
               <Lock className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
@@ -2030,184 +1946,7 @@ export default function InstructorDashboard() {
           </CardContent>
         </Card>
 
-        {/* Notification Preferences */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2" />
-              Notification Preferences
-            </CardTitle>
-            <CardDescription>
-              Choose how you want to be notified about course activities
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Email Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Mail className="h-4 w-4 mr-2" />
-                Email Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailAssignments">Assignment Submissions</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when students submit assignments</p>
-                  </div>
-                  <Switch
-                    id="emailAssignments"
-                    checked={notificationSettings.assignmentSubmissions}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, assignmentSubmissions: checked})}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailGrades">Grade Reminders</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get reminded about pending grades</p>
-                  </div>
-                  <Switch
-                    id="emailGrades"
-                    checked={notificationSettings.gradeReminders}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, gradeReminders: checked})}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="emailMessages">Student Messages</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Get notified when students send messages</p>
-                  </div>
-                  <Switch
-                    id="emailMessages"
-                    checked={notificationSettings.studentMessages}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, studentMessages: checked})}
-                  />
-                </div>
-              </div>
-            </div>
 
-            <Separator />
-
-            {/* Push Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Push Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="pushNotifications">Push Notifications</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Receive push notifications on your device</p>
-                  </div>
-                  <Switch
-                    id="pushNotifications"
-                    checked={notificationSettings.pushNotifications}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, pushNotifications: checked})}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Digest Notifications */}
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-3 flex items-center">
-                <Calendar className="h-4 w-4 mr-2" />
-                Digest Notifications
-              </h4>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label htmlFor="weeklyDigest">Weekly Summary</Label>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Weekly summary of course activities</p>
-                  </div>
-                  <Switch
-                    id="weeklyDigest"
-                    checked={notificationSettings.weeklyDigest}
-                    onCheckedChange={(checked) => setNotificationSettings({...notificationSettings, weeklyDigest: checked})}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleSaveNotifications} disabled={isNotificationsSaving}>
-              {isNotificationsSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Notification Preferences
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Privacy Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Shield className="h-5 w-5 mr-2" />
-              Privacy Settings
-            </CardTitle>
-            <CardDescription>
-              Control your privacy and visibility
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="profileVisible">Profile Visibility</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Make your profile visible to students</p>
-              </div>
-              <Switch
-                id="profileVisible"
-                checked={privacySettings.profileVisibility === "public"}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, profileVisibility: checked ? "public" : "private"})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="showEmail">Show Email Address</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Display your email on your profile</p>
-              </div>
-              <Switch
-                id="showEmail"
-                checked={privacySettings.showEmail}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, showEmail: checked})}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="allowMessages">Allow Messages</Label>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Allow students to message you</p>
-              </div>
-              <Switch
-                id="allowMessages"
-                checked={privacySettings.allowMessages}
-                onCheckedChange={(checked) => setPrivacySettings({...privacySettings, allowMessages: checked})}
-              />
-            </div>
-
-            <Button onClick={handleSavePrivacy} disabled={isPrivacySaving}>
-              {isPrivacySaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Privacy Settings
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
 
         {/* Account Security */}
         <Card>

@@ -56,13 +56,30 @@ export default function CourseManagement() {
   const { data: courses = [], isLoading } = useQuery({
     queryKey: ['/api/courses/instructor', user.id],
     queryFn: () => fetch(`/api/courses/instructor/${user.id}`, { credentials: 'include' }).then(r => r.json()),
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
-  // Mock enrollment data
+  // Fetch enrollment data for all courses
   const { data: enrollmentData = {} } = useQuery({
-    queryKey: ['/api/courses/enrollments'],
-    enabled: false,
-    initialData: {} as Record<string, number>,
+    queryKey: ['/api/courses/enrollments', user.id],
+    queryFn: async () => {
+      const enrollmentCounts: Record<string, number> = {};
+      
+      for (const course of courses) {
+        try {
+          const enrollments = await fetch(`/api/courses/${course.id}/enrollments`, { credentials: 'include' })
+            .then(r => r.json());
+          enrollmentCounts[course.id] = enrollments.length;
+        } catch (error) {
+          console.error(`Error fetching enrollments for course ${course.id}:`, error);
+          enrollmentCounts[course.id] = 0;
+        }
+      }
+      
+      return enrollmentCounts;
+    },
+    enabled: courses.length > 0,
+    refetchInterval: 5000, // Auto-refresh every 5 seconds
   });
 
   // Create course mutation

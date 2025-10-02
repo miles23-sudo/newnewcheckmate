@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // Users table
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   email: text("email").notNull().unique(),
@@ -19,7 +19,7 @@ export const users = pgTable("users", {
 
 // Courses table
 export const courses = pgTable("courses", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: text("title").notNull(),
   description: text("description"),
   code: text("code").notNull(), // e.g., "CS101" (no longer unique)
@@ -35,15 +35,18 @@ export const courses = pgTable("courses", {
 
 // Course enrollments
 export const enrollments = pgTable("enrollments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: varchar("course_id").notNull().references(() => courses.id),
   studentId: varchar("student_id").notNull().references(() => users.id),
   enrolledAt: timestamp("enrolled_at").defaultNow(),
-});
+}, (table) => ({
+  // Unique constraint to prevent duplicate enrollments
+  uniqueEnrollment: unique("unique_enrollment").on(table.courseId, table.studentId),
+}));
 
 // Assignments table
 export const assignments = pgTable("assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: varchar("course_id").notNull().references(() => courses.id),
   title: text("title").notNull(),
   description: text("description"),
@@ -58,7 +61,7 @@ export const assignments = pgTable("assignments", {
 
 // Assignment submissions
 export const submissions = pgTable("submissions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   assignmentId: varchar("assignment_id").notNull().references(() => assignments.id),
   studentId: varchar("student_id").notNull().references(() => users.id),
   content: text("content"), // Student's written submission
@@ -73,7 +76,7 @@ export const submissions = pgTable("submissions", {
 
 // Grades and AI feedback
 export const grades = pgTable("grades", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   submissionId: varchar("submission_id").notNull().references(() => submissions.id),
   score: integer("score"),
   feedback: text("feedback"), // AI-generated feedback
@@ -85,7 +88,7 @@ export const grades = pgTable("grades", {
 
 // Announcements table
 export const announcements = pgTable("announcements", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: varchar("course_id").notNull().references(() => courses.id),
   title: text("title").notNull(),
   content: text("content").notNull(),
@@ -97,7 +100,7 @@ export const announcements = pgTable("announcements", {
 
 // Materials/Lessons table
 export const materials = pgTable("materials", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: varchar("course_id").notNull().references(() => courses.id),
   title: text("title").notNull(),
   description: text("description"),
@@ -116,7 +119,7 @@ export const materials = pgTable("materials", {
 
 // Plagiarism reports table
 export const plagiarismReports = pgTable("plagiarism_reports", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   submissionId: varchar("submission_id").notNull().references(() => submissions.id),
   matches: jsonb("matches").notNull(), // Array of {id, similarity, studentId, content}
   highestSimilarity: integer("highest_similarity").notNull(), // Highest similarity percentage
@@ -126,12 +129,32 @@ export const plagiarismReports = pgTable("plagiarism_reports", {
 
 // Chat messages table
 export const chatMessages = pgTable("chat_messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   courseId: varchar("course_id").notNull().references(() => courses.id),
   senderId: varchar("sender_id").notNull().references(() => users.id),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// System logs table
+export const systemLogs = pgTable("system_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  level: text("level").$type<'info' | 'warning' | 'error' | 'debug'>().notNull(),
+  source: text("source").notNull(), // e.g., "User Management", "Authentication", "AI Grading"
+  message: text("message").notNull(),
+  userId: varchar("user_id").references(() => users.id), // Optional - can be null for system events
+  metadata: jsonb("metadata"), // Additional context data
+  ipAddress: text("ip_address"), // User's IP address
+  userAgent: text("user_agent"), // Browser/client info
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User sessions table for connect-pg-simple
+export const userSessions = pgTable("user_sessions", {
+  sid: varchar("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire").notNull(),
 });
 
 // Relations
@@ -232,6 +255,13 @@ export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
   }),
 }));
 
+export const systemLogsRelations = relations(systemLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [systemLogs.userId],
+    references: [users.id],
+  }),
+}));
+
 // Zod schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   firstName: true,
@@ -297,6 +327,16 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).pick({
   content: true,
 });
 
+export const insertSystemLogSchema = createInsertSchema(systemLogs).pick({
+  level: true,
+  source: true,
+  message: true,
+  userId: true,
+  metadata: true,
+  ipAddress: true,
+  userAgent: true,
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -315,3 +355,5 @@ export type InsertMaterial = z.infer<typeof insertMaterialSchema>;
 export type PlagiarismReport = typeof plagiarismReports.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type SystemLog = typeof systemLogs.$inferSelect;
+export type InsertSystemLog = z.infer<typeof insertSystemLogSchema>;
