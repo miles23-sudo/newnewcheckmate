@@ -273,8 +273,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Save user to session
         req.session.user = result.user;
         
-        // Log successful login
+        // Log successful login with session details
         console.log(`✅ User login: ${result.user.email} (${result.user.id})`);
+        console.log('🔍 Session data stored:', {
+          sessionId: req.sessionID,
+          userRole: req.session.user.role,
+          userEmail: req.session.user.email,
+          sessionExists: !!req.session,
+          fullUserData: req.session.user
+        });
         
         res.json({
           success: true,
@@ -594,9 +601,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Authentication middleware for admin routes
   const requireAdmin = (req: any, res: any, next: any) => {
+    // Debug logging to understand session issues
+    console.log('🔍 Admin middleware check:', {
+      hasSession: !!req.session,
+      hasUser: !!req.session?.user,
+      userRole: req.session?.user?.role,
+      userEmail: req.session?.user?.email,
+      sessionId: req.sessionID,
+      fullSession: req.session
+    });
+    
     if (!req.session?.user || req.session.user.role !== 'administrator') {
+      console.log('❌ Admin access denied:', {
+        noSession: !req.session,
+        noUser: !req.session?.user,
+        wrongRole: req.session?.user?.role !== 'administrator',
+        actualRole: req.session?.user?.role,
+        expectedRole: 'administrator'
+      });
       return res.status(403).json({ error: 'Admin access required' });
     }
+    
+    console.log('✅ Admin access granted for:', req.session.user.email);
     next();
   };
 
